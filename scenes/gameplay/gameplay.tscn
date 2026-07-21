@@ -1,0 +1,110 @@
+[gd_scene load_steps=10 format=3 uid="uid://gameplay_scene"]
+
+[ext_resource type="Script" path="res://scripts/gameplay/gameplay_root.gd" id="1_root"]
+[ext_resource type="Script" path="res://scripts/gameplay/game_controller.gd" id="2_controller"]
+[ext_resource type="PackedScene" uid="uid://game_hud_scene" path="res://scenes/ui/hud.tscn" id="3_hud"]
+[ext_resource type="PackedScene" uid="uid://match_board_scene" path="res://scenes/gameplay/board.tscn" id="4_board"]
+[ext_resource type="PackedScene" uid="uid://win_popup_scene" path="res://scenes/ui/win_popup.tscn" id="5_win"]
+[ext_resource type="PackedScene" uid="uid://loss_popup_scene" path="res://scenes/ui/loss_popup.tscn" id="6_loss"]
+[ext_resource type="PackedScene" uid="uid://pause_popup_scene" path="res://scenes/ui/pause_popup.tscn" id="7_pause"]
+[ext_resource type="PackedScene" uid="uid://debug_panel_scene" path="res://scenes/ui/debug_panel.tscn" id="8_debug"]
+[ext_resource type="Resource" uid="uid://level_01" path="res://resources/levels/level_01.tres" id="9_level"]
+
+[node name="Gameplay" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_root")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.99, 0.9, 0.88, 1)
+
+[node name="BackgroundAccent" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -280.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0.95, 0.78, 0.74, 0.55)
+
+[node name="GameController" type="Node" parent="."]
+script = ExtResource("2_controller")
+level_config = ExtResource("9_level")
+debug_enabled = true
+
+[node name="SafeArea" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="SafeArea"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HUD" parent="SafeArea/VBox" instance=ExtResource("3_hud")]
+layout_mode = 2
+
+[node name="BoardArea" type="Control" parent="SafeArea/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Board" parent="SafeArea/VBox/BoardArea" instance=ExtResource("4_board")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DebugHint" type="Label" parent="SafeArea/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.3, 0.32, 0.7)
+theme_override_font_sizes/font_size = 12
+text = "Dev: press ` for debug panel · keys 1-6 for debug actions"
+horizontal_alignment = 1
+
+[node name="Overlays" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="WinPopup" parent="Overlays" instance=ExtResource("5_win")]
+visible = false
+layout_mode = 1
+
+[node name="LossPopup" parent="Overlays" instance=ExtResource("6_loss")]
+visible = false
+layout_mode = 1
+
+[node name="PausePopup" parent="Overlays" instance=ExtResource("7_pause")]
+visible = false
+layout_mode = 1
+
+[node name="DebugPanel" parent="Overlays" instance=ExtResource("8_debug")]
+visible = false
+layout_mode = 1

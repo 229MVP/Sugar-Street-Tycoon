@@ -1,0 +1,174 @@
+[gd_scene load_steps=5 format=3 uid="uid://game_hud_scene"]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top"]
+bg_color = Color(0.93, 0.45, 0.55, 0.95)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stat"]
+bg_color = Color(1, 1, 1, 0.88)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bar"]
+bg_color = Color(0.35, 0.72, 0.62, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="HUD" type="Control"]
+custom_minimum_size = Vector2(0, 210)
+layout_mode = 3
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 210.0
+grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("1_script")
+
+[node name="TopBanner" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 210.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_top")
+
+[node name="Margin" type="MarginContainer" parent="TopBanner"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="TopBanner/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleRow" type="HBoxContainer" parent="TopBanner/Margin/VBox"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="TopBanner/Margin/VBox/TitleRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.97, 0.95, 1)
+theme_override_font_sizes/font_size = 28
+text = "Sugar Street Tycoon"
+horizontal_alignment = 1
+
+[node name="PauseButton" type="Button" parent="TopBanner/Margin/VBox/TitleRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(72, 40)
+layout_mode = 2
+text = "Pause"
+
+[node name="RestartButton" type="Button" parent="TopBanner/Margin/VBox/TitleRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 40)
+layout_mode = 2
+text = "Restart"
+
+[node name="ObjectiveLabel" type="Label" parent="TopBanner/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.93, 1)
+theme_override_font_sizes/font_size = 18
+text = "Collect 20 strawberries"
+horizontal_alignment = 1
+
+[node name="StatsRow" type="HBoxContainer" parent="TopBanner/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MovesBox" type="PanelContainer" parent="TopBanner/Margin/VBox/StatsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_stat")
+
+[node name="MovesInner" type="VBoxContainer" parent="TopBanner/Margin/VBox/StatsRow/MovesBox"]
+layout_mode = 2
+
+[node name="MovesCaption" type="Label" parent="TopBanner/Margin/VBox/StatsRow/MovesBox/MovesInner"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.25, 0.28, 1)
+theme_override_font_sizes/font_size = 12
+text = "MOVES"
+horizontal_alignment = 1
+
+[node name="MovesLabel" type="Label" parent="TopBanner/Margin/VBox/StatsRow/MovesBox/MovesInner"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.15, 0.16, 1)
+theme_override_font_sizes/font_size = 26
+text = "20"
+horizontal_alignment = 1
+
+[node name="ProgressBox" type="PanelContainer" parent="TopBanner/Margin/VBox/StatsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_stat")
+
+[node name="ProgressInner" type="VBoxContainer" parent="TopBanner/Margin/VBox/StatsRow/ProgressBox"]
+layout_mode = 2
+
+[node name="ProgressCaption" type="Label" parent="TopBanner/Margin/VBox/StatsRow/ProgressBox/ProgressInner"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.25, 0.28, 1)
+theme_override_font_sizes/font_size = 12
+text = "STRAWBERRIES"
+horizontal_alignment = 1
+
+[node name="ProgressLabel" type="Label" parent="TopBanner/Margin/VBox/StatsRow/ProgressBox/ProgressInner"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.15, 0.16, 1)
+theme_override_font_sizes/font_size = 26
+text = "0 / 20"
+horizontal_alignment = 1
+
+[node name="ScoreBox" type="PanelContainer" parent="TopBanner/Margin/VBox/StatsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_stat")
+
+[node name="ScoreInner" type="VBoxContainer" parent="TopBanner/Margin/VBox/StatsRow/ScoreBox"]
+layout_mode = 2
+
+[node name="ScoreCaption" type="Label" parent="TopBanner/Margin/VBox/StatsRow/ScoreBox/ScoreInner"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.25, 0.28, 1)
+theme_override_font_sizes/font_size = 12
+text = "SCORE"
+horizontal_alignment = 1
+
+[node name="ScoreLabel" type="Label" parent="TopBanner/Margin/VBox/StatsRow/ScoreBox/ScoreInner"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.15, 0.16, 1)
+theme_override_font_sizes/font_size = 26
+text = "0"
+horizontal_alignment = 1
+
+[node name="ProgressBar" type="ProgressBar" parent="TopBanner/Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+max_value = 20.0
+show_percentage = false
+theme_override_styles/fill = SubResource("StyleBoxFlat_bar")
+
+[node name="StatusLabel" type="Label" parent="TopBanner/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.96, 0.94, 0.9)
+theme_override_font_sizes/font_size = 14
+text = "Swap desserts to fill the order"
+horizontal_alignment = 1

@@ -1,0 +1,88 @@
+[gd_scene load_steps=3 format=3 uid="uid://debug_panel_scene"]
+
+[ext_resource type="Script" path="res://scripts/ui/debug_panel.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.12, 0.12, 0.14, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.7, 0.7, 0.75, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+content_margin_left = 12
+content_margin_top = 12
+content_margin_right = 12
+content_margin_bottom = 12
+
+[node name="DebugPanel" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_script")
+
+[node name="Panel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -320.0
+offset_right = 250.0
+offset_bottom = -12.0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "Debug (keys 1-6, `)"
+horizontal_alignment = 1
+
+[node name="PrintBoardButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "1 Print Board"
+
+[node name="RestartButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "2 Restart"
+
+[node name="CheckMovesButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "3 Check Moves"
+
+[node name="AddMovesButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "4 +5 Moves"
+
+[node name="AddObjectiveButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "5 +5 Objective"
+
+[node name="ReshuffleButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "6 Reshuffle"
+
+[node name="CloseButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Close"
