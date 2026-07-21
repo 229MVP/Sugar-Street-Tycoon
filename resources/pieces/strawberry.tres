@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="PieceType" load_steps=3 format=3 uid="uid://piece_strawberry"]
+
+[ext_resource type="Script" path="res://scripts/data/piece_type.gd" id="1_piece"]
+[ext_resource type="Texture2D" path="res://assets/placeholders/strawberry.png" id="2_tex"]
+
+[resource]
+script = ExtResource("1_piece")
+id = &"strawberry"
+display_name = "Strawberry"
+color = Color(0.86, 0.27, 0.35, 1)
+texture = ExtResource("2_tex")
+fallback_label = "St"
