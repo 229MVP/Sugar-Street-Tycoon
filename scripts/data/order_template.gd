@@ -6,6 +6,7 @@ enum Difficulty { EASY, MEDIUM, HARD }
 
 @export var order_id: StringName = &""
 @export var customer_name: String = ""
+@export var customer_message: String = ""
 @export var customer_avatar: Texture2D
 @export var customer_color: Color = Color(0.9, 0.55, 0.65, 1)
 @export var recipe_id: StringName = &""

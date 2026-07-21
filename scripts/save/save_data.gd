@@ -77,6 +77,8 @@ static func create_default() -> SaveData:
 	data.shop_level = 1
 	data.unlocked_recipes = {
 		&"chocolate_strawberries": true,
+		&"chocolate_cupcakes": true,
+		&"classic_pastries": true,
 		&"classic_cupcakes": true,
 	}
 	data.equipment_levels = {

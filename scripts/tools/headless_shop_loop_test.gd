@@ -49,8 +49,11 @@ func _test_starter() -> bool:
 	if not _gs.is_recipe_unlocked(&"chocolate_strawberries"):
 		push_error("starter recipe missing")
 		return false
-	if not _gs.is_recipe_unlocked(&"classic_cupcakes"):
+	if not _gs.is_recipe_unlocked(&"chocolate_cupcakes"):
 		push_error("starter cupcakes missing")
+		return false
+	if not _gs.is_recipe_unlocked(&"classic_pastries"):
+		push_error("starter pastries missing")
 		return false
 	if _gs.is_recipe_unlocked(&"candied_grapes"):
 		push_error("candied grapes should be locked")
@@ -73,17 +76,17 @@ func _test_order_visibility() -> bool:
 
 
 func _test_win_complete_flow() -> bool:
-	var order_id := "order_mia"
+	var order_id := "order_lily"
 	var level = _gs.begin_order_level(order_id)
 	if level == null or level.level_id != "level_01":
-		push_error("failed to begin mia order/level")
+		push_error("failed to begin lily order/level")
 		return false
 	if level.move_limit != 20:
-		push_error("mia moves expected 20, got %d" % level.move_limit)
+		push_error("lily moves expected 20, got %d" % level.move_limit)
 		return false
 	var obj = level.get_primary_objective()
 	if obj == null or obj.piece_id != &"strawberry" or obj.target_amount != 20:
-		push_error("mia objective mismatch")
+		push_error("lily objective mismatch")
 		return false
 	if _gs.get_order_status(order_id) != SaveData.OrderStatus.LEVEL_IN_PROGRESS:
 		push_error("order not in progress")
@@ -125,7 +128,7 @@ func _test_win_complete_flow() -> bool:
 
 
 func _test_loss_no_reward() -> bool:
-	var order_id := "order_jordan"
+	var order_id := "order_noah"
 	_gs.begin_order_level(order_id)
 	var coins_before: int = _gs.data.coins
 	_gs.on_level_lost(order_id)
