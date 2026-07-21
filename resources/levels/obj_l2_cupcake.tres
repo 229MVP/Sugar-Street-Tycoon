@@ -5,5 +5,5 @@
 [resource]
 script = ExtResource("1_obj")
 piece_id = &"cupcake"
-target_amount = 25
-description = "Collect 25 cupcakes"
+target_amount = 20
+description = "Collect 20 cupcakes"

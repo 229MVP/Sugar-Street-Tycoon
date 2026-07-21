@@ -14,7 +14,7 @@ Supabase, ads, IAP, multiple locations, and multiplayer are **not** included yet
 
 1. Install [Godot 4.3+](https://godotengine.org/download).
 2. Open Godot → **Import** → this folder (`project.godot`).
-3. Press **F5**. Main scene: `res://scenes/title/title.tscn`.
+3. Press **F5**. Main scene: `res://scenes/main/title_screen.tscn`.
 4. Mouse on desktop; touch on device (`emulate_touch_from_mouse` enabled).
 
 **Viewport:** 720×1280 portrait, `keep_width` stretch.
@@ -40,7 +40,7 @@ Winning a level marks the order **Ready to Complete**. Rewards are granted only 
 
 ## Scene flow
 
-`title.tscn` → `shop_hub.tscn` ⇄ `worker_roster.tscn` / `recipe_book.tscn` / `upgrade_shop.tscn` / `inventory_screen.tscn`  
+`title_screen.tscn` → `shop_hub.tscn` ⇄ `worker_roster.tscn` / `recipe_book.tscn` / `upgrade_shop.tscn` / `inventory_screen.tscn`  
 `shop_hub` → `gameplay.tscn` (order session) → back to `shop_hub`
 
 Autoloads: `GameState`, `AudioManager`, `SceneRouter`.

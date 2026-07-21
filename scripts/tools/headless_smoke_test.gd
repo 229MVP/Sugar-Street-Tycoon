@@ -63,53 +63,54 @@ func _test_match_and_swap() -> bool:
 
 
 func _test_level_start() -> bool:
-	var packed := load("res://scenes/main/main.tscn") as PackedScene
+	## Gameplay scene directly — project main scene is the title screen.
+	var packed := load("res://scenes/gameplay/gameplay.tscn") as PackedScene
 	if packed == null:
-		push_error("main.tscn missing")
+		push_error("gameplay.tscn missing")
 		return false
-	var main_scene := packed.instantiate()
+	var main_scene: Node = packed.instantiate()
 	root.add_child(main_scene)
 
-	var board: MatchBoard = null
-	var controller: GameController = null
+	var board: Node = null
+	var controller: Node = null
 	for _i in 90:
 		await process_frame
-		board = main_scene.get_tree().get_first_node_in_group("match_board") as MatchBoard
-		controller = main_scene.get_tree().get_first_node_in_group("game_controller") as GameController
+		board = main_scene.get_tree().get_first_node_in_group("match_board")
+		controller = main_scene.get_tree().get_first_node_in_group("game_controller")
 		if board == null or controller == null:
 			continue
-		if board.grid.size() != board.rows:
+		if int(board.get("grid").size()) != int(board.get("rows")):
 			continue
 		var filled := true
-		for row in board.rows:
-			for col in board.columns:
-				if board.grid[row][col] == null:
+		for row in range(int(board.get("rows"))):
+			for col in range(int(board.get("columns"))):
+				if board.get("grid")[row][col] == null:
 					filled = false
 					break
 			if not filled:
 				break
-		if filled and not board.is_input_locked():
+		if filled and not board.call("is_input_locked"):
 			break
 
 	if board == null or controller == null:
 		push_error("board/controller not found in tree")
 		return false
-	if board.grid.is_empty():
+	if board.get("grid").is_empty():
 		push_error("board grid empty after start")
 		return false
-	if SwapValidator.has_any_match(board.get_type_grid()):
+	if SwapValidator.has_any_match(board.call("get_type_grid")):
 		push_error("starting board contains matches")
 		return false
-	if not board.has_possible_moves():
+	if not board.call("has_possible_moves"):
 		push_error("starting board has no moves")
 		return false
-	if controller.get_moves() != 20:
-		push_error("moves not 20 at start (got %d)" % controller.get_moves())
+	if int(controller.call("get_moves")) != 20:
+		push_error("moves not 20 at start (got %d)" % int(controller.call("get_moves")))
 		return false
-	if controller.get_target() != 20:
+	if int(controller.call("get_target")) != 20:
 		push_error("objective target not 20")
 		return false
-	print("[OK] level start (no initial matches, has moves, HUD state)")
+	print("[OK] gameplay level start (no initial matches, has moves, HUD state)")
 	main_scene.queue_free()
 	await process_frame
 	return true

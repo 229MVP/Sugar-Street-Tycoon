@@ -108,17 +108,13 @@ func _ready() -> void:
 		AudioManager.play_button()
 		SceneRouter.go_inventory()
 	)
-	workers_button.disabled = false
-	workers_button.text = "Workers"
-	workers_button.pressed.connect(func():
-		AudioManager.play_button()
-		SceneRouter.go_workers()
-	)
+	workers_button.disabled = true
+	workers_button.text = "Workers (Coming Soon)"
+	locations_button.disabled = true
+	locations_button.text = "Locations (Coming Soon)"
 	settings_button.pressed.connect(_on_settings)
 	title_button.pressed.connect(_on_title)
 	play_button.pressed.connect(_on_play_selected)
-	locations_button.disabled = true
-	locations_button.text = "Locations (Locked)"
 
 	_order_detail.start_pressed.connect(_start_order)
 	_order_detail.complete_pressed.connect(_complete_order)
@@ -186,7 +182,7 @@ func _rebuild_orders() -> void:
 func _make_order_card(order: OrderTemplate, status: int) -> Control:
 	var panel := PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(1, 1, 1, 0.92)
+	style.bg_color = Color(1, 1, 1, 0.94)
 	style.corner_radius_top_left = 12
 	style.corner_radius_top_right = 12
 	style.corner_radius_bottom_right = 12
@@ -196,7 +192,8 @@ func _make_order_card(order: OrderTemplate, status: int) -> Control:
 	style.content_margin_right = 10
 	style.content_margin_bottom = 8
 	if status == SaveData.OrderStatus.READY_TO_COMPLETE:
-		style.border_color = Color(0.3, 0.75, 0.55)
+		style.bg_color = Color(0.88, 0.98, 0.92, 1)
+		style.border_color = Color(0.25, 0.7, 0.5)
 		style.border_width_left = 3
 		style.border_width_top = 3
 		style.border_width_right = 3
@@ -214,7 +211,7 @@ func _make_order_card(order: OrderTemplate, status: int) -> Control:
 	panel.add_child(hbox)
 
 	var avatar := ColorRect.new()
-	avatar.custom_minimum_size = Vector2(44, 44)
+	avatar.custom_minimum_size = Vector2(48, 48)
 	avatar.color = order.customer_color
 	hbox.add_child(avatar)
 
@@ -223,30 +220,51 @@ func _make_order_card(order: OrderTemplate, status: int) -> Control:
 	hbox.add_child(vbox)
 	var recipe := GameState.catalog.get_recipe(order.recipe_id)
 	var title := Label.new()
-	title.text = "%s · %s" % [order.customer_name, recipe.display_name if recipe else str(order.recipe_id)]
-	title.add_theme_font_size_override("font_size", 16)
+	title.text = "%s" % order.customer_name
+	title.add_theme_font_size_override("font_size", 17)
 	vbox.add_child(title)
-	var meta := Label.new()
-	meta.text = "%s · %s · %s coins" % [order.difficulty_label(), order.level_id, RewardCalculator.format_coins(order.coin_reward)]
-	meta.add_theme_font_size_override("font_size", 12)
-	meta.add_theme_color_override("font_color", Color(0.35, 0.3, 0.32))
-	vbox.add_child(meta)
+	var recipe_label := Label.new()
+	recipe_label.text = "Recipe: %s" % (recipe.display_name if recipe else str(order.recipe_id))
+	recipe_label.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(recipe_label)
+	var objective := Label.new()
+	objective.text = "Objective: %s" % order.objective_text()
+	objective.add_theme_font_size_override("font_size", 12)
+	objective.add_theme_color_override("font_color", Color(0.35, 0.3, 0.32))
+	vbox.add_child(objective)
+	var moves := Label.new()
+	moves.text = "Moves: %d" % (order.move_limit if order.move_limit > 0 else 20)
+	moves.add_theme_font_size_override("font_size", 12)
+	moves.add_theme_color_override("font_color", Color(0.35, 0.3, 0.32))
+	vbox.add_child(moves)
+	var rewards := Label.new()
+	rewards.text = "Rewards: %s coins · %d XP · %d rep" % [
+		RewardCalculator.format_coins(order.coin_reward),
+		order.experience_reward,
+		order.reputation_reward,
+	]
+	rewards.add_theme_font_size_override("font_size", 12)
+	rewards.add_theme_color_override("font_color", Color(0.4, 0.32, 0.28))
+	vbox.add_child(rewards)
 	var status_label := Label.new()
 	status_label.text = _status_text(status)
 	status_label.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(status_label)
 
 	var action := Button.new()
-	action.custom_minimum_size = Vector2(110, 40)
+	action.custom_minimum_size = Vector2(120, 44)
 	if status == SaveData.OrderStatus.READY_TO_COMPLETE:
-		action.text = "Complete"
+		action.text = "Complete Order"
 		action.pressed.connect(func(): _complete_order(str(order.order_id)))
 	elif status == SaveData.OrderStatus.FAILED:
-		action.text = "Retry"
-		action.pressed.connect(func(): _open_order(str(order.order_id)))
+		action.text = "Start Order"
+		action.pressed.connect(func(): _start_order(str(order.order_id)))
+	elif status == SaveData.OrderStatus.COMPLETED:
+		action.text = "Done"
+		action.disabled = true
 	else:
-		action.text = "View"
-		action.pressed.connect(func(): _open_order(str(order.order_id)))
+		action.text = "Start Order"
+		action.pressed.connect(func(): _start_order(str(order.order_id)))
 	hbox.add_child(action)
 
 	if status == SaveData.OrderStatus.READY_TO_COMPLETE:

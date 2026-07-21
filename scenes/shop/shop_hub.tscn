@@ -171,7 +171,7 @@ custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
-text = "Workers (Locked)"
+text = "Workers (Coming Soon)"
 
 [node name="LocationsButton" type="Button" parent="SafeArea/VBox/NavRow3"]
 unique_name_in_owner = true
@@ -179,7 +179,7 @@ custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
-text = "Locations (Locked)"
+text = "Locations (Coming Soon)"
 
 [node name="PopupHost" type="Control" parent="."]
 unique_name_in_owner = true
