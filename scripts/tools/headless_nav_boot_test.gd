@@ -20,6 +20,7 @@ func _run() -> void:
 	for path in [
 		"res://scenes/main/title_screen.tscn",
 		"res://scenes/shop/shop_hub.tscn",
+		"res://scenes/main/main.tscn",
 		"res://scenes/gameplay/gameplay.tscn",
 	]:
 		if not ResourceLoader.exists(path):
@@ -46,6 +47,11 @@ func _run() -> void:
 		ok = false
 	else:
 		print("[OK] SceneRouter TITLE_SCENE")
+	if str(router.GAMEPLAY_SCENE) != "res://scenes/main/main.tscn":
+		push_error("SceneRouter GAMEPLAY_SCENE wrong: %s" % str(router.GAMEPLAY_SCENE))
+		ok = false
+	else:
+		print("[OK] SceneRouter GAMEPLAY_SCENE = main.tscn")
 
 	SaveManager.delete_save()
 	gs.new_game()
@@ -130,10 +136,10 @@ func _run() -> void:
 			inst.queue_free()
 			await process_frame
 
-	# Gameplay board still boots with injected Mia config
+	# Gameplay board still boots via main.tscn with injected Mia config
 	router.pending_order_id = "order_mia"
 	router.pending_level_config = level
-	var gp: Node = (load("res://scenes/gameplay/gameplay.tscn") as PackedScene).instantiate()
+	var gp: Node = (load("res://scenes/main/main.tscn") as PackedScene).instantiate()
 	root.add_child(gp)
 	var board: Node = null
 	var controller: Node = null
@@ -144,7 +150,7 @@ func _run() -> void:
 		if board and controller:
 			break
 	if board == null or controller == null:
-		push_error("gameplay board/controller missing")
+		push_error("gameplay board/controller missing via main.tscn")
 		ok = false
 	else:
 		var cfg = controller.get("level_config")
@@ -156,7 +162,7 @@ func _run() -> void:
 			push_error("session order not applied")
 			ok = false
 		else:
-			print("[OK] gameplay loads with Mia order config")
+			print("[OK] main.tscn loads puzzle with Mia order config")
 		gp.queue_free()
 
 	print("=== RESULT: %s ===" % ("PASS" if ok else "FAIL"))

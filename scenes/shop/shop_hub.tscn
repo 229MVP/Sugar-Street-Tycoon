@@ -159,7 +159,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Title"
+text = "Back to Title"
 
 [node name="NavRow3" type="HBoxContainer" parent="SafeArea/VBox"]
 layout_mode = 2
