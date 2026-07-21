@@ -18,26 +18,59 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.99, 0.88, 0.86, 1)
+mouse_filter = 2
+color = Color(1, 0.93, 0.9, 1)
 
-[node name="Accent" type="ColorRect" parent="."]
+[node name="GradientTop" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 280.0
+offset_bottom = 340.0
 grow_horizontal = 2
-color = Color(0.93, 0.45, 0.55, 0.92)
+mouse_filter = 2
+color = Color(0.93, 0.42, 0.55, 0.95)
 
-[node name="AccentSoft" type="ColorRect" parent="."]
+[node name="GradientMid" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 280.0
+offset_bottom = 420.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.98, 0.72, 0.58, 0.55)
+
+[node name="GradientBottom" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -180.0
+offset_top = -220.0
 grow_horizontal = 2
 grow_vertical = 0
-color = Color(0.98, 0.78, 0.72, 0.55)
+mouse_filter = 2
+color = Color(0.98, 0.82, 0.7, 0.65)
+
+[node name="FrostingBand" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 300.0
+offset_bottom = 318.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(1, 0.96, 0.94, 0.85)
+
+[node name="DecorHost" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 1
@@ -47,18 +80,18 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/margin_left = 28
-theme_override_constants/margin_top = 56
+theme_override_constants/margin_top = 64
 theme_override_constants/margin_right = 28
 theme_override_constants/margin_bottom = 28
 
 [node name="VBox" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 14
 
 [node name="Brand" type="Label" parent="Margin/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.97, 0.95, 1)
-theme_override_font_sizes/font_size = 44
+theme_override_font_sizes/font_size = 46
 text = "Sugar Street Tycoon"
 horizontal_alignment = 1
 autowrap_mode = 3
@@ -66,24 +99,37 @@ autowrap_mode = 3
 [node name="SubtitleLabel" type="Label" parent="Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.95, 0.93, 0.98)
-theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.95, 0.92, 0.98)
+theme_override_font_sizes/font_size = 24
 text = "Match & Build"
+horizontal_alignment = 1
+
+[node name="Tagline" type="Label" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.93, 0.9, 0.9)
+theme_override_font_sizes/font_size = 15
+text = "Match desserts. Grow your shop."
 horizontal_alignment = 1
 
 [node name="Spacer" type="Control" parent="Margin/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
 
+[node name="PlayButton" type="Button" parent="Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+text = "Play"
+
 [node name="ContinueButton" type="Button" parent="Margin/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 56)
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
-text = "Continue Game"
+text = "Continue"
 
 [node name="NewGameButton" type="Button" parent="Margin/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 56)
+custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 text = "New Game"
 
@@ -102,7 +148,7 @@ text = "Exit"
 [node name="VersionLabel" type="Label" parent="Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.45, 0.3, 0.32, 0.85)
+theme_override_colors/font_color = Color(0.45, 0.28, 0.3, 0.85)
 theme_override_font_sizes/font_size = 14
 text = "v0.2.0"
 horizontal_alignment = 1

@@ -63,10 +63,10 @@ func _test_match_and_swap() -> bool:
 
 
 func _test_level_start() -> bool:
-	## Gameplay scene directly — project main scene is the title screen.
-	var packed := load("res://scenes/gameplay/gameplay.tscn") as PackedScene
+	## Boot through main.tscn (working puzzle host), not the title screen.
+	var packed := load("res://scenes/main/main.tscn") as PackedScene
 	if packed == null:
-		push_error("gameplay.tscn missing")
+		push_error("main.tscn missing")
 		return false
 	var main_scene: Node = packed.instantiate()
 	root.add_child(main_scene)
@@ -110,7 +110,7 @@ func _test_level_start() -> bool:
 	if int(controller.call("get_target")) != 20:
 		push_error("objective target not 20")
 		return false
-	print("[OK] gameplay level start (no initial matches, has moves, HUD state)")
+	print("[OK] main.tscn puzzle start (no initial matches, has moves, HUD state)")
 	main_scene.queue_free()
 	await process_frame
 	return true

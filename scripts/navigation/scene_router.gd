@@ -3,7 +3,7 @@ extends Node
 
 const TITLE_SCENE := "res://scenes/main/title_screen.tscn"
 const SHOP_SCENE := "res://scenes/shop/shop_hub.tscn"
-const GAMEPLAY_SCENE := "res://scenes/gameplay/gameplay.tscn"
+const GAMEPLAY_SCENE := "res://scenes/main/main.tscn"
 const RECIPE_BOOK_SCENE := "res://scenes/recipes/recipe_book.tscn"
 const UPGRADE_SCENE := "res://scenes/upgrades/upgrade_shop.tscn"
 const INVENTORY_SCENE := "res://scenes/inventory/inventory_screen.tscn"
