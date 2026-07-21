@@ -69,8 +69,16 @@ func get_primary_piece_id() -> StringName:
 
 
 func get_primary_description() -> String:
-	var id := get_primary_piece_id()
-	return str(_descriptions.get(id, "Complete the order"))
+	return get_all_descriptions_text()
+
+
+func get_all_descriptions_text() -> String:
+	if _descriptions.is_empty():
+		return "Complete the order"
+	var parts: PackedStringArray = []
+	for piece_id in _targets.keys():
+		parts.append(str(_descriptions.get(piece_id, str(piece_id))))
+	return " · ".join(parts)
 
 
 func is_complete() -> bool:
@@ -81,5 +89,27 @@ func is_complete() -> bool:
 
 
 func get_progress_text() -> String:
-	var id := get_primary_piece_id()
-	return "%d / %d" % [get_progress(id), get_target(id)]
+	if _targets.is_empty():
+		return "0 / 0"
+	var parts: PackedStringArray = []
+	for piece_id in _targets.keys():
+		parts.append("%s %d/%d" % [str(piece_id).capitalize(), get_progress(piece_id), get_target(piece_id)])
+	return " · ".join(parts)
+
+
+func get_total_collected() -> int:
+	var total := 0
+	for piece_id in _progress.keys():
+		total += int(_progress[piece_id])
+	return total
+
+
+func get_total_target() -> int:
+	var total := 0
+	for piece_id in _targets.keys():
+		total += int(_targets[piece_id])
+	return total
+
+
+func get_tracked_piece_ids() -> Array:
+	return _targets.keys()

@@ -10,6 +10,7 @@ signal replay_pressed
 @onready var moves_label: Label = %MovesLabel
 @onready var continue_button: Button = %ContinueButton
 @onready var replay_button: Button = %ReplayButton
+@onready var stars_label: Label = get_node_or_null("%StarsLabel")
 
 
 func _ready() -> void:
@@ -17,11 +18,20 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	continue_button.pressed.connect(func(): continue_pressed.emit())
 	replay_button.pressed.connect(func(): replay_pressed.emit())
+	if stars_label == null:
+		stars_label = Label.new()
+		stars_label.name = "StarsLabel"
+		stars_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		panel.get_node("VBox").add_child(stars_label)
+		panel.get_node("VBox").move_child(stars_label, 3)
 
 
-func show_result(score: int, moves_remaining: int) -> void:
+func show_result(score: int, moves_remaining: int, stars: int = 1) -> void:
 	score_label.text = "Final score: %d" % score
 	moves_label.text = "Moves remaining: %d" % moves_remaining
+	if stars_label:
+		stars_label.text = "Stars earned: %s" % "★".repeat(stars) + "☆".repeat(maxi(0, 3 - stars))
+	continue_button.text = "Return to Shop" if SceneRouter.pending_order_id != "" else "Continue"
 	visible = true
 	modulate.a = 0.0
 	panel.scale = Vector2(0.85, 0.85)
@@ -30,6 +40,7 @@ func show_result(score: int, moves_remaining: int) -> void:
 	tween.set_parallel(true)
 	tween.tween_property(self, "modulate:a", 1.0, 0.2)
 	tween.tween_property(panel, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	AudioManager.play_popup()
 
 
 func hide_popup() -> void:

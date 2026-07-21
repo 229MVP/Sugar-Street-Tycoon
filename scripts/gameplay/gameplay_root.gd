@@ -11,9 +11,10 @@ extends Control
 
 
 func _ready() -> void:
-	# Ensure controller has a board reference before it starts the level.
 	controller.board_path = controller.get_path_to(board)
 	controller.set_board(board)
+	if SceneRouter.pending_level_config != null:
+		controller.configure_session(SceneRouter.pending_order_id, SceneRouter.pending_level_config)
 
 	hud.bind_controller(controller)
 
@@ -28,7 +29,7 @@ func _ready() -> void:
 	win_popup.continue_pressed.connect(_on_win_continue)
 	win_popup.replay_pressed.connect(controller.restart_level)
 	loss_popup.replay_pressed.connect(controller.restart_level)
-	loss_popup.exit_pressed.connect(controller.exit_to_ready)
+	loss_popup.exit_pressed.connect(_on_loss_exit)
 	pause_popup.resume_pressed.connect(controller.resume_game)
 	pause_popup.restart_pressed.connect(controller.restart_level)
 
@@ -43,7 +44,8 @@ func _ready() -> void:
 func _on_show_win(score: int, moves_remaining: int) -> void:
 	pause_popup.hide_popup()
 	loss_popup.hide_popup()
-	win_popup.show_result(score, moves_remaining)
+	var stars := PlayerProgression.calculate_stars(moves_remaining, controller.level_state.move_limit)
+	win_popup.show_result(score, moves_remaining, stars)
 
 
 func _on_show_loss(progress_text: String) -> void:
@@ -53,8 +55,18 @@ func _on_show_loss(progress_text: String) -> void:
 
 
 func _on_win_continue() -> void:
-	# Prototype: continue replays the same test level.
-	controller.restart_level()
+	# Rewards are NOT granted here — player completes the order in the shop hub.
+	if controller.session_order_id != "":
+		SceneRouter.return_to_shop_from_level()
+	else:
+		controller.restart_level()
+
+
+func _on_loss_exit() -> void:
+	if controller.session_order_id != "":
+		SceneRouter.return_to_shop_from_level()
+	else:
+		controller.exit_to_ready()
 
 
 func _hide_all_overlays() -> void:

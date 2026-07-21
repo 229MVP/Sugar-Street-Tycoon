@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="LevelConfig" load_steps=9 format=3 uid="uid://level_03"]
+
+[ext_resource type="Script" path="res://scripts/data/level_config.gd" id="1_level"]
+[ext_resource type="Resource" uid="uid://piece_chocolate" path="res://resources/pieces/chocolate.tres" id="2_ch"]
+[ext_resource type="Resource" uid="uid://piece_strawberry" path="res://resources/pieces/strawberry.tres" id="3_st"]
+[ext_resource type="Resource" uid="uid://piece_cupcake" path="res://resources/pieces/cupcake.tres" id="4_cu"]
+[ext_resource type="Resource" uid="uid://piece_donut" path="res://resources/pieces/donut.tres" id="5_do"]
+[ext_resource type="Resource" uid="uid://piece_cookie" path="res://resources/pieces/cookie.tres" id="6_ck"]
+[ext_resource type="Resource" uid="uid://piece_candy" path="res://resources/pieces/candy.tres" id="7_ca"]
+[ext_resource type="Resource" uid="uid://obj_l3_choc" path="res://resources/levels/obj_l3_choc.tres" id="obj1"]
+
+[resource]
+script = ExtResource("1_level")
+level_id = "level_03"
+level_name = "Chocolate Charge"
+columns = 8
+rows = 8
+move_limit = 20
+piece_types = Array[Resource]([ExtResource("2_ch"), ExtResource("3_st"), ExtResource("4_cu"), ExtResource("5_do"), ExtResource("6_ck"), ExtResource("7_ca")])
+objectives = Array[Resource]([ExtResource("obj1")])
+min_valid_moves = 1

@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="ObjectiveData" load_steps=2 format=3 uid="uid://obj_l4_berry"]
+
+[ext_resource type="Script" path="res://scripts/data/objective_data.gd" id="1_obj"]
+
+[resource]
+script = ExtResource("1_obj")
+piece_id = &"strawberry"
+target_amount = 15
+description = "Collect 15 strawberries"

@@ -1,168 +1,181 @@
 # Sugar Street Tycoon: Match & Build
 
-Phase 1 prototype: a playable **match-3** foundation for a portrait mobile game built in **Godot 4** + **GDScript**.
+Portrait **Godot 4** / **GDScript** prototype combining:
 
-Business management, Supabase, ads, IAP, workers, and online features are intentionally **not** included yet.
+1. Match-3 dessert puzzles  
+2. Dessert shop management (orders, recipes, equipment, inventory)  
+3. Worker system with passive / offline earnings  
+
+Supabase, ads, IAP, multiple locations, and multiplayer are **not** included yet.
 
 ---
 
 ## How to launch
 
-1. Install [Godot 4.3+](https://godotengine.org/download) (4.x Mobile/Forward+ is fine).
-2. Open Godot → **Import** → select this folder (`project.godot`).
-3. Press **F5** (or Play). The main scene is `res://scenes/main/main.tscn`.
-4. Use the mouse on desktop; touch works on device / with touch emulation.
+1. Install [Godot 4.3+](https://godotengine.org/download).
+2. Open Godot → **Import** → this folder (`project.godot`).
+3. Press **F5**. Main scene: `res://scenes/title/title.tscn`.
+4. Mouse on desktop; touch on device (`emulate_touch_from_mouse` enabled).
 
-**Viewport:** 720×1280 portrait, stretched with `keep_width` for phones.
+**Viewport:** 720×1280 portrait, `keep_width` stretch.
 
 ---
 
-## Project structure
+## Game loop
 
 ```
-res://
-├── assets/placeholders/     # Temporary dessert PNGs (swap later)
-├── icon/                    # App icon
-├── resources/
-│   ├── pieces/              # PieceType .tres (chocolate, strawberry, …)
-│   └── levels/              # LevelConfig + ObjectiveData .tres
-├── scenes/
-│   ├── main/                # Boot / main scene
-│   ├── gameplay/            # Gameplay + board scenes
-│   ├── ui/                  # HUD, win/loss/pause/debug
-│   └── pieces/              # Dessert piece scene
-└── scripts/
-    ├── board/               # Board, match, swap, gravity
-    ├── gameplay/            # Controller, score, objectives, level state
-    ├── ui/                  # HUD / popup scripts
-    ├── pieces/              # DessertPiece behavior
-    ├── data/                # Resource class scripts
-    └── main/                # Main boot script
+Title → Continue / New Game
+  → Shop Hub
+    → Select customer order
+    → Match-3 level (win / lose)
+    → Return to Shop
+    → Complete Order (grants rewards once)
+    → Hire / upgrade workers, unlock recipes, upgrade equipment
+    → Collect walk-in (passive) income
+```
+
+Winning a level marks the order **Ready to Complete**. Rewards are granted only when you press **Complete Order** in the shop.
+
+---
+
+## Scene flow
+
+`title.tscn` → `shop_hub.tscn` ⇄ `worker_roster.tscn` / `recipe_book.tscn` / `upgrade_shop.tscn` / `inventory_screen.tscn`  
+`shop_hub` → `gameplay.tscn` (order session) → back to `shop_hub`
+
+Autoloads: `GameState`, `AudioManager`, `SceneRouter`.
+
+---
+
+## Worker system overview
+
+| Worker | Role | Station | Unlock | Hire | Primary bonus |
+|--------|------|---------|--------|------|----------------|
+| Ava | Baker | Oven | Lv1 | 300 | +3% order coins / level |
+| Marcus | Cashier | Checkout | Lv2 | 450 | +2% order reputation / level |
+| Lily | Mixer Specialist | Mixer | Lv3 | 750 | +3% order XP / level |
+| Noah | Display Decorator | Display Case | Lv4 | 1000 | +5% passive income / level |
+| Sofia | Order Coordinator | Order Desk | Lv5 | 1500 | Bonus ingredient chance 5% +2%/level |
+| Chef Andre | Store Manager | Manager | Lv8 + 150 rep | 4000 | +2% all order rewards / level; +3% passive / level |
+
+- Max worker level: **10**
+- Bonuses apply only when **hired and assigned** to a compatible station
+- One worker per station
+
+### How to create a new worker
+
+1. Add a `_add_worker(...)` entry in `scripts/shop/content_catalog.gd` → `_build_workers()`.
+2. Set role, rarity, unlock requirements, hire cost, station, bonus types.
+3. Append the id to `worker_sequence`.
+
+### Hiring / upgrades / assignments
+
+- **Hire:** unlocked + enough coins → confirmation → deduct → save. Cannot hire twice.
+- **Upgrade costs:** base ladder 250→5500 with rarity multipliers (Common 1.0, Uncommon 1.2, Rare 1.5, Premium 2.0).
+- **Assign:** hired + compatible station; replace confirmation if occupied; unassign clears bonuses.
+
+### Reward calculation order
+
+1. Base customer order reward  
+2. Equipment bonuses  
+3. Worker bonuses (assigned only)  
+4. (Reserved) temporary event bonuses  
+5. Final rounded integers  
+
+Order detail popup shows base / equipment / worker / final breakdown.
+
+---
+
+## Passive income formula
+
+```
+rate = 10 coins/min
+     × shop_level_multiplier (1.0 / 1.15 / 1.30 / 1.50 / 1.75 for shop lv 1–5)
+     × (1 + display_case_bonus)   # +3% per display level above 1
+     × (1 + worker_passive_bonus) # Noah / Chef Andre when assigned
+```
+
+- Accumulates while Shop Hub is open (1s ticks).
+- Stored in `stored_passive_coins` until **Collect**.
+- **Cap:** 4 hours of storage at the current rate; then stops until collected.
+
+### Offline earnings
+
+On load / continue:
+
+1. `elapsed = now - last_active_unix`
+2. Reject if missing timestamp, negative (clock skew), or `< 60s`
+3. Cap elapsed at **4 hours**
+4. Compute using the passive formula with saved bonuses
+5. Add into **storage** (not wallet)
+6. Show Offline Earnings popup → Collect moves storage into coins
+7. `last_offline_calc_unix` prevents double application of the same away period
+
+---
+
+## Save data (version 2)
+
+File: `user://sugar_street_save.json` (+ `.bak.json`)
+
+Includes player economy, orders, recipes, equipment, inventory, **plus**:
+
+- `hired_workers`, `worker_levels`, `worker_assignments`, `worker_unlock_flags`
+- `stored_passive_coins`, `last_active_unix`, `last_passive_tick_unix`, `last_offline_calc_unix`
+- `offline_pending_popup`, `worker_save_version`
+
+**Migration:** v1 saves load with defaults (`apply_worker_defaults`) without wiping progress. Invalid assignments/levels/negative storage are repaired by `WorkerManager.repair_assignments`.
+
+---
+
+## Project structure (additions)
+
+```
+scripts/workers/     worker_data helpers, manager, bonus calculator, roster UI
+scripts/economy/     reward_calculator, passive_income_manager, offline_earnings_calculator
+scripts/shop/        game_state, shop hub/visual/activity, passive + offline UI
+scenes/workers/      worker_roster.tscn
+scenes/shop/         shop_hub.tscn
+scenes/title/        title.tscn
 ```
 
 ---
 
-## Main scripts
+## Debug tools (debug builds only)
 
-| Script | Role |
-|--------|------|
-| `scripts/board/board.gd` | Grid ownership, swaps, cascades, refill, reshuffle |
-| `scripts/board/match_detector.gd` | Horizontal / vertical match finding + score tiers |
-| `scripts/board/swap_validator.gd` | Adjacent swap rules + possible-move search |
-| `scripts/board/board_gravity.gd` | Fall compaction + empty-cell discovery |
-| `scripts/pieces/dessert_piece.gd` | Piece visuals, select/drag input, tweens |
-| `scripts/gameplay/game_controller.gd` | Moves, win/loss, debug commands, orchestration |
-| `scripts/gameplay/level_state.gd` | Playing / paused / won / lost |
-| `scripts/gameplay/objective_tracker.gd` | Collect-N progress |
-| `scripts/gameplay/score_tracker.gd` | Score + cascade multiplier reset |
-| `scripts/data/level_config.gd` | Data-driven level settings |
-| `scripts/data/piece_type.gd` | Piece id, color, texture |
-| `scripts/data/objective_data.gd` | Target piece + amount |
+Shop debug panel includes: +coins/stars/XP/rep, unlock/hire/assign workers, simulate 1h offline, fill/clear passive storage, print workers/bonuses, corrupt/repair worker save, reset workers only, reset full save.
+
+Match-3 debug keys (`  / 1–6) still work in gameplay.
 
 ---
 
-## How to create another level
-
-1. Duplicate `resources/levels/level_01.tres` (e.g. `level_02.tres`).
-2. Optionally create a new `ObjectiveData` resource (or reuse one).
-3. Edit exports:
-   - `move_limit`
-   - `columns` / `rows` (prototype assumes 8×8 but supports other sizes ≥ 3)
-   - `piece_types` array
-   - `objectives` array
-4. Point `GameController.level_config` in `scenes/gameplay/gameplay.tscn` at the new resource  
-   **or** load it from code in `GameController.start_level()`.
-
-No board logic changes are required for a new collect-style level.
-
----
-
-## How to replace placeholder piece artwork
-
-1. Drop final textures into `assets/` (keep or replace files under `assets/placeholders/`).
-2. Open the matching resource in `resources/pieces/*.tres`.
-3. Assign the new `texture` on the `PieceType` resource.
-4. Leave `id` values unchanged (`strawberry`, `chocolate`, …) so levels and objectives keep working.
-
-Board and match logic only care about `PieceType.id`, not the image.
-
----
-
-## Controls
-
-- **Tap / click** a piece, then tap an adjacent piece to swap.
-- **Drag** a piece toward an adjacent neighbor to swap.
-- Only orthogonal adjacent swaps are allowed.
-- Invalid swaps animate back and **do not** consume a move.
-
-### Debug (development)
-
-| Key | Action |
-|-----|--------|
-| `` ` `` | Toggle debug panel |
-| `1` | Print board to Output |
-| `2` | Restart level |
-| `3` | Show whether possible moves exist |
-| `4` | Add 5 moves |
-| `5` | Add 5 objective progress |
-| `6` | Force reshuffle |
-
----
-
-## Current test level
-
-- **20 moves**
-- **Collect 20 strawberries**
-- Scoring:
-  - Match of 3 → 100 pts / piece
-  - Match of 4 → 150 pts / piece
-  - Match of 5+ → 200 pts / piece
-  - Cascade multiplier increases each wave, resets when the board is stable
-
----
-
-## Current limitations (by design)
-
-- No shop / business management layer
-- No Supabase accounts, cloud saves, leaderboards, or live events
-- No ads or in-app purchases
-- No special pieces (striped, wrapped, color bomb)
-- No level map / multiple unlockable stages UI
-- Placeholder art only
-- Win **Continue** currently replays the same test level
-
----
-
-## Manual Godot editor steps
-
-Usually **none** if you open the project as-is. Optional:
-
-1. Project → Project Settings → confirm **Display → Window** portrait 720×1280.
-2. Project → Export → add Android / iOS presets when you are ready to ship.
-3. Reimport textures after replacing artwork (Godot does this automatically on focus).
-
----
-
-## Automated smoke tests (optional)
-
-With Godot 4.3+ on your PATH:
+## Automated tests
 
 ```bash
-godot --headless --path . -s res://scripts/tools/headless_smoke_test.gd
-godot --headless --path . -s res://scripts/tools/headless_swap_test.gd
-godot --headless --path . -s res://scripts/tools/headless_invalid_swap_test.gd
+godot --headless --path . -s res://scripts/tools/headless_worker_test.gd
 ```
-
-These verify level resources, starting-board constraints, valid move consumption, and invalid-swap rollback.
 
 ---
 
-## Exact manual testing steps
+## Current limitations
 
-1. Open the project in Godot 4.3+ and press **F5**.
-2. Confirm the HUD shows **Sugar Street Tycoon**, **20 moves**, **0 / 20** strawberries, score **0**.
-3. Tap a piece, then an adjacent piece — invalid pairs should bounce back with moves unchanged.
-4. Make a valid match — pieces clear, others fall, new pieces spawn, cascades resolve, moves decrease by 1.
-5. Press `` ` `` and use debug **+5 Objective** until you win; confirm the win popup.
-6. Restart, burn moves with debug or play until loss; confirm the loss popup.
-7. Use debug **Reshuffle** / **Check Moves** to confirm reshuffle leaves a playable board.
+- Placeholder art / silent audio hooks
+- No ingredient consumption or ingredient shop
+- No multiple locations / workers pathfinding
+- Passive income intentionally weaker than active puzzle play
+- Offline protections are local anti-glitch only (not cheat-proof)
+- Win **Continue** from a non-order sandbox still replays the level
+
+---
+
+## Exact testing steps
+
+1. New Game → starter shop, Ava available, other workers locked.  
+2. Hire Ava (300 coins), assign to Oven, confirm she appears by the oven.  
+3. Start Mia’s order → win → Ready to Complete → Complete once → coins/XP/rep once.  
+4. Confirm order popup shows equipment + worker bonus breakdown.  
+5. Upgrade Ava; confirm cost and level cap at 10.  
+6. Leave Ava unassigned → bonuses leave reward preview.  
+7. Wait in shop / use debug “Fill Passive Storage” → Collect once.  
+8. Debug “Simulate 1h Offline” → popup → Collect.  
+9. Restart game → Continue loads progress; offline not duplicated.  
+10. Match-3, recipes, and equipment upgrades still function.
