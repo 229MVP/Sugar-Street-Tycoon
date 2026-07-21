@@ -89,9 +89,10 @@ func show_order(order: OrderTemplate, status: int) -> void:
 	for k in order.ingredient_rewards.keys():
 		ingredients += "\n• %s x%d" % [str(k).capitalize(), int(order.ingredient_rewards[k])]
 	var chance := float(breakdown.get("bonus_ingredient_chance", 0.0))
-	_body.text = "Recipe: %s\nLevel: %s\nDifficulty: %s\n\nBase: %s coins / %d XP / %d rep\nAfter equipment: %s / %d / %d\nWorker bonus: %s\nFinal: %s coins / %d XP / %d rep\nBonus ingredient chance: %.0f%%%s\n\nStatus: %s" % [
+	_body.text = "Recipe: %s\nObjective: %s\nMoves: %d\nDifficulty: %s\n\nBase: %s coins / %d XP / %d rep\nAfter equipment: %s / %d / %d\nWorker bonus: %s\nFinal: %s coins / %d XP / %d rep\nBonus ingredient chance: %.0f%%%s\n\nStatus: %s" % [
 		recipe.display_name if recipe else str(order.recipe_id),
-		order.level_id,
+		order.objective_text(),
+		order.move_limit if order.move_limit > 0 else 20,
 		order.difficulty_label(),
 		RewardCalculator.format_coins(int(base.get("coins", order.coin_reward))),
 		int(base.get("experience", order.experience_reward)),

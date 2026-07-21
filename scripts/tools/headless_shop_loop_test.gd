@@ -1,5 +1,9 @@
 extends SceneTree
 ## Validates shop starter data, order→level→complete rewards, save, and unlocks.
+## Uses /root/GameState node lookup so -s mode compiles before Autoload globals bind.
+
+
+var _gs: Node
 
 
 func _init() -> void:
@@ -8,9 +12,17 @@ func _init() -> void:
 
 func _run() -> void:
 	print("=== Shop loop smoke test ===")
+	await process_frame
+	await process_frame
+	_gs = root.get_node_or_null("/root/GameState")
+	if _gs == null:
+		push_error("GameState autoload missing")
+		quit(1)
+		return
+
 	var ok := true
 	SaveManager.delete_save()
-	GameState.new_game()
+	_gs.new_game()
 
 	ok = _test_starter() and ok
 	ok = _test_order_visibility() and ok
@@ -27,20 +39,20 @@ func _run() -> void:
 
 
 func _test_starter() -> bool:
-	var d := GameState.data
+	var d = _gs.data
 	if d.coins != 500 or d.player_level != 1 or d.shop_level != 1:
 		push_error("starter economy mismatch")
 		return false
 	if d.stars != 0 or d.reputation != 0:
 		push_error("starter stars/rep mismatch")
 		return false
-	if not GameState.is_recipe_unlocked(&"chocolate_strawberries"):
+	if not _gs.is_recipe_unlocked(&"chocolate_strawberries"):
 		push_error("starter recipe missing")
 		return false
-	if not GameState.is_recipe_unlocked(&"classic_cupcakes"):
+	if not _gs.is_recipe_unlocked(&"classic_cupcakes"):
 		push_error("starter cupcakes missing")
 		return false
-	if GameState.is_recipe_unlocked(&"candied_grapes"):
+	if _gs.is_recipe_unlocked(&"candied_grapes"):
 		push_error("candied grapes should be locked")
 		return false
 	print("[OK] starter data")
@@ -48,7 +60,7 @@ func _test_starter() -> bool:
 
 
 func _test_order_visibility() -> bool:
-	var visible := GameState.get_visible_orders()
+	var visible = _gs.get_visible_orders()
 	if visible.size() != 3:
 		push_error("expected 3 visible orders, got %d" % visible.size())
 		return false
@@ -62,37 +74,50 @@ func _test_order_visibility() -> bool:
 
 func _test_win_complete_flow() -> bool:
 	var order_id := "order_mia"
-	var level := GameState.begin_order_level(order_id)
+	var level = _gs.begin_order_level(order_id)
 	if level == null or level.level_id != "level_01":
 		push_error("failed to begin mia order/level")
 		return false
-	if GameState.get_order_status(order_id) != SaveData.OrderStatus.LEVEL_IN_PROGRESS:
+	if level.move_limit != 20:
+		push_error("mia moves expected 20, got %d" % level.move_limit)
+		return false
+	var obj = level.get_primary_objective()
+	if obj == null or obj.piece_id != &"strawberry" or obj.target_amount != 20:
+		push_error("mia objective mismatch")
+		return false
+	if _gs.get_order_status(order_id) != SaveData.OrderStatus.LEVEL_IN_PROGRESS:
 		push_error("order not in progress")
 		return false
 
-	# Simulate win with 10/20 moves => 2 stars (25% exactly? 10/20=0.5 => 3 stars)
-	var result := GameState.on_level_won(order_id, 900, 10, 20)
-	if GameState.get_order_status(order_id) != SaveData.OrderStatus.READY_TO_COMPLETE:
+	var result = _gs.on_level_won(order_id, 900, 10, 20)
+	if _gs.get_order_status(order_id) != SaveData.OrderStatus.READY_TO_COMPLETE:
 		push_error("order not ready to complete")
 		return false
 	if int(result.get("stars", 0)) != 3:
 		push_error("expected 3 stars for 50% moves, got %s" % str(result.get("stars")))
 		return false
 
-	var coins_before := GameState.data.coins
-	var rewards := GameState.complete_order(order_id)
+	var coins_before: int = _gs.data.coins
+	var stars_before: int = _gs.data.stars
+	var rep_before: int = _gs.data.reputation
+	var rewards = _gs.complete_order(order_id)
 	if rewards.is_empty():
 		push_error("complete_order returned empty")
 		return false
-	if GameState.data.coins <= coins_before:
+	if _gs.data.coins <= coins_before:
 		push_error("coins did not increase")
 		return false
-	# Duplicate complete must fail.
-	var again := GameState.complete_order(order_id)
+	if _gs.data.stars <= stars_before:
+		push_error("stars did not increase")
+		return false
+	if _gs.data.reputation <= rep_before:
+		push_error("reputation did not increase")
+		return false
+	var again = _gs.complete_order(order_id)
 	if not again.is_empty():
 		push_error("duplicate complete granted rewards")
 		return false
-	if GameState.get_order_status(order_id) != SaveData.OrderStatus.COMPLETED:
+	if _gs.get_order_status(order_id) != SaveData.OrderStatus.COMPLETED:
 		push_error("order not marked completed")
 		return false
 	print("[OK] win → ready → complete once")
@@ -101,16 +126,16 @@ func _test_win_complete_flow() -> bool:
 
 func _test_loss_no_reward() -> bool:
 	var order_id := "order_jordan"
-	GameState.begin_order_level(order_id)
-	var coins_before := GameState.data.coins
-	GameState.on_level_lost(order_id)
-	if GameState.get_order_status(order_id) != SaveData.OrderStatus.FAILED:
+	_gs.begin_order_level(order_id)
+	var coins_before: int = _gs.data.coins
+	_gs.on_level_lost(order_id)
+	if _gs.get_order_status(order_id) != SaveData.OrderStatus.FAILED:
 		push_error("loss did not mark failed")
 		return false
-	if GameState.data.coins != coins_before:
+	if _gs.data.coins != coins_before:
 		push_error("loss granted coins")
 		return false
-	var empty := GameState.complete_order(order_id)
+	var empty = _gs.complete_order(order_id)
 	if not empty.is_empty():
 		push_error("failed order could be completed")
 		return false
@@ -119,11 +144,10 @@ func _test_loss_no_reward() -> bool:
 
 
 func _test_stars_and_best() -> bool:
-	# Best stars must not decrease.
-	GameState.data.best_level_stars["level_02"] = 3
-	GameState.begin_order_level("order_riley")
-	GameState.on_level_won("order_riley", 100, 1, 22) # 1 star
-	if int(GameState.data.best_level_stars.get("level_02", 0)) != 3:
+	_gs.data.best_level_stars["level_02"] = 3
+	_gs.begin_order_level("order_riley")
+	_gs.on_level_won("order_riley", 100, 1, 22)
+	if int(_gs.data.best_level_stars.get("level_02", 0)) != 3:
 		push_error("best stars decreased")
 		return false
 	print("[OK] best stars retained")
@@ -131,39 +155,33 @@ func _test_stars_and_best() -> bool:
 
 
 func _test_recipe_unlock_gate() -> bool:
-	var check := GameState.can_unlock_recipe(&"candied_grapes")
+	var check = _gs.can_unlock_recipe(&"candied_grapes")
 	if check.get("ok", false):
 		push_error("candied grapes unlockable too early")
 		return false
-	GameState.debug_add_stars(3)
-	GameState.debug_add_coins(300)
-	# Still needs player level 2.
-	check = GameState.can_unlock_recipe(&"candied_grapes")
-	if check.get("ok", false):
-		# May still fail on level — ensure we level up.
-		pass
-	GameState.debug_add_xp(100) # level 1->2 needs 100
-	check = GameState.can_unlock_recipe(&"candied_grapes")
+	_gs.debug_add_stars(3)
+	_gs.debug_add_coins(300)
+	_gs.debug_add_xp(100)
+	check = _gs.can_unlock_recipe(&"candied_grapes")
 	if not check.get("ok", false):
-		# Ensure enough coins after level-up reward
-		GameState.debug_add_coins(300)
-		check = GameState.can_unlock_recipe(&"candied_grapes")
+		_gs.debug_add_coins(300)
+		check = _gs.can_unlock_recipe(&"candied_grapes")
 	if not check.get("ok", false):
 		push_error("should be able to unlock candied grapes now: %s" % str(check))
 		return false
-	var coins_before := GameState.data.coins
-	var result := GameState.unlock_recipe(&"candied_grapes")
+	var coins_before: int = _gs.data.coins
+	var result = _gs.unlock_recipe(&"candied_grapes")
 	if not result.get("ok", false):
 		push_error("unlock failed")
 		return false
-	if GameState.data.coins >= coins_before:
+	if _gs.data.coins >= coins_before:
 		push_error("unlock did not deduct coins")
 		return false
-	var dup := GameState.unlock_recipe(&"candied_grapes")
+	var dup = _gs.unlock_recipe(&"candied_grapes")
 	if dup.get("ok", false):
 		push_error("duplicate unlock allowed")
 		return false
-	if not GameState.is_recipe_unlocked(&"candied_grapes"):
+	if not _gs.is_recipe_unlocked(&"candied_grapes"):
 		push_error("recipe not unlocked")
 		return false
 	print("[OK] recipe unlock gating")
@@ -171,25 +189,25 @@ func _test_recipe_unlock_gate() -> bool:
 
 
 func _test_upgrade() -> bool:
-	GameState.debug_add_coins(5000)
-	var before := GameState.get_equipment_level(&"oven")
-	var cost_check := GameState.can_upgrade_equipment(&"oven")
+	_gs.debug_add_coins(5000)
+	var before: int = _gs.get_equipment_level(&"oven")
+	var cost_check = _gs.can_upgrade_equipment(&"oven")
 	if not cost_check.get("ok", false):
 		push_error("oven should be upgradable")
 		return false
-	var coins_before := GameState.data.coins
-	var result := GameState.upgrade_equipment(&"oven")
+	var coins_before: int = _gs.data.coins
+	var result = _gs.upgrade_equipment(&"oven")
 	if not result.get("ok", false):
 		push_error("upgrade failed")
 		return false
-	if GameState.get_equipment_level(&"oven") != before + 1:
+	if _gs.get_equipment_level(&"oven") != before + 1:
 		push_error("oven level not increased")
 		return false
-	if GameState.data.coins >= coins_before:
+	if _gs.data.coins >= coins_before:
 		push_error("upgrade did not deduct coins")
 		return false
-	GameState.debug_max_equipment()
-	var blocked := GameState.can_upgrade_equipment(&"oven")
+	_gs.debug_max_equipment()
+	var blocked = _gs.can_upgrade_equipment(&"oven")
 	if blocked.get("ok", false):
 		push_error("max level still upgradable")
 		return false
@@ -198,8 +216,8 @@ func _test_upgrade() -> bool:
 
 
 func _test_save_persist() -> bool:
-	GameState.data.coins = 1234
-	GameState.save_now()
+	_gs.data.coins = 1234
+	_gs.save_now()
 	var loaded := SaveManager.load_game()
 	if loaded.coins != 1234:
 		push_error("save did not persist coins")
@@ -214,7 +232,6 @@ func _test_corrupt_recovery() -> bool:
 	if recovered == null:
 		push_error("corrupt save returned null")
 		return false
-	# Should not crash and should produce usable data.
 	if recovered.player_level < 1:
 		push_error("recovered save invalid")
 		return false

@@ -18,6 +18,12 @@ enum Difficulty { EASY, MEDIUM, HARD }
 @export var time_limit_seconds: float = 0.0 ## Reserved for future timed orders.
 @export var requires_recipe_unlocked: bool = true
 
+## Puzzle overrides applied when starting this order (keeps board systems intact).
+@export var target_piece_id: StringName = &""
+@export var target_amount: int = 0
+@export var move_limit: int = 0
+@export var objective_description: String = ""
+
 
 func difficulty_label() -> String:
 	match difficulty:
@@ -25,3 +31,11 @@ func difficulty_label() -> String:
 		Difficulty.MEDIUM: return "Medium"
 		Difficulty.HARD: return "Hard"
 	return "Unknown"
+
+
+func objective_text() -> String:
+	if objective_description != "":
+		return objective_description
+	if target_piece_id != &"" and target_amount > 0:
+		return "Collect %d %ss" % [target_amount, str(target_piece_id)]
+	return "Complete the puzzle"

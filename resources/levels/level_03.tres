@@ -7,12 +7,12 @@
 [ext_resource type="Resource" uid="uid://piece_donut" path="res://resources/pieces/donut.tres" id="5_do"]
 [ext_resource type="Resource" uid="uid://piece_cookie" path="res://resources/pieces/cookie.tres" id="6_ck"]
 [ext_resource type="Resource" uid="uid://piece_candy" path="res://resources/pieces/candy.tres" id="7_ca"]
-[ext_resource type="Resource" uid="uid://obj_l3_choc" path="res://resources/levels/obj_l3_choc.tres" id="obj1"]
+[ext_resource type="Resource" uid="uid://obj_l3_berry_25" path="res://resources/levels/obj_l3_berry_25.tres" id="obj1"]
 
 [resource]
 script = ExtResource("1_level")
 level_id = "level_03"
-level_name = "Chocolate Charge"
+level_name = "Berry Batch"
 columns = 8
 rows = 8
 move_limit = 20

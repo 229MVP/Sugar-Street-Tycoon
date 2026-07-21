@@ -110,6 +110,7 @@ static func _to_dict(data: SaveData) -> Dictionary:
 		"order_level_results": _stringify_keys(data.order_level_results),
 		"completed_order_ids": data.completed_order_ids.duplicate(),
 		"active_order_id": data.active_order_id,
+		"selected_order_id": data.active_order_id,
 		"visible_order_ids": data.visible_order_ids.duplicate(),
 		"settings": data.settings.duplicate(true),
 		"worker_save_version": data.worker_save_version,
@@ -149,7 +150,7 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	if typeof(completed) == TYPE_ARRAY:
 		for item in completed:
 			data.completed_order_ids.append(str(item))
-	data.active_order_id = str(dict.get("active_order_id", ""))
+	data.active_order_id = str(dict.get("active_order_id", dict.get("selected_order_id", "")))
 	var visible: Variant = dict.get("visible_order_ids", [])
 	data.visible_order_ids = []
 	if typeof(visible) == TYPE_ARRAY:

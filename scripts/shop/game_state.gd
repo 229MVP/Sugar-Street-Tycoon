@@ -213,11 +213,40 @@ func begin_order_level(order_id: String) -> LevelConfig:
 	var status := get_order_status(order_id)
 	if status == SaveData.OrderStatus.COMPLETED or status == SaveData.OrderStatus.READY_TO_COMPLETE:
 		return null
+	var level := _build_level_for_order(order)
+	if level == null or not level.validate():
+		push_error("GameState: invalid level config for order '%s'" % order_id)
+		return null
 	data.active_order_id = order_id
 	data.order_statuses[order_id] = SaveData.OrderStatus.LEVEL_IN_PROGRESS
 	save_now()
 	order_updated.emit(order_id)
-	return catalog.get_level(order.level_id)
+	return level
+
+
+func _build_level_for_order(order: OrderTemplate) -> LevelConfig:
+	## Clone a board template and apply this order's objective / move limit.
+	var base := catalog.get_level(order.level_id)
+	if base == null:
+		return null
+	var level := LevelConfig.new()
+	level.level_id = base.level_id
+	level.level_name = "%s for %s" % [base.level_name, order.customer_name]
+	level.columns = base.columns
+	level.rows = base.rows
+	level.piece_types = base.piece_types.duplicate()
+	level.min_valid_moves = base.min_valid_moves
+	level.move_limit = order.move_limit if order.move_limit > 0 else base.move_limit
+	if order.target_piece_id != &"" and order.target_amount > 0:
+		var obj := ObjectiveData.new()
+		obj.piece_id = order.target_piece_id
+		obj.target_amount = order.target_amount
+		obj.description = order.objective_text()
+		var objs: Array[ObjectiveData] = [obj]
+		level.objectives = objs
+	else:
+		level.objectives = base.objectives.duplicate()
+	return level
 
 
 func on_level_won(order_id: String, score: int, moves_remaining: int, move_limit: int) -> Dictionary:

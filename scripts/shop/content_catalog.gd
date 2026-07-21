@@ -158,10 +158,10 @@ func _build_levels() -> void:
 		_obj(&"strawberry", 20, "Collect 20 strawberries")
 	])
 	levels["level_02"] = _make_level("level_02", "Cupcake Crowds", 22, piece_types, [
-		_obj(&"cupcake", 25, "Collect 25 cupcakes")
+		_obj(&"cupcake", 20, "Collect 20 cupcakes")
 	])
-	levels["level_03"] = _make_level("level_03", "Chocolate Charge", 20, piece_types, [
-		_obj(&"chocolate", 30, "Collect 30 chocolate pieces")
+	levels["level_03"] = _make_level("level_03", "Berry Batch", 20, piece_types, [
+		_obj(&"strawberry", 25, "Collect 25 strawberries")
 	])
 	levels["level_04"] = _make_level("level_04", "Cookie & Berry", 24, piece_types, [
 		_obj(&"cookie", 20, "Collect 20 cookies"),
@@ -215,32 +215,41 @@ func _make_level(id: String, name: String, moves: int, pieces: Array[PieceType],
 func _build_orders() -> void:
 	_add_order(&"order_mia", "Mia", &"chocolate_strawberries", "level_01",
 		150, 25, 5, OrderTemplate.Difficulty.EASY,
-		{&"chocolate": 2, &"strawberries": 2}, Color(0.95, 0.55, 0.65))
+		{&"chocolate": 2, &"strawberries": 2}, Color(0.95, 0.55, 0.65),
+		&"strawberry", 20, 20, "Collect 20 strawberries")
 	_add_order(&"order_jordan", "Jordan", &"classic_cupcakes", "level_02",
 		200, 35, 7, OrderTemplate.Difficulty.EASY,
-		{&"flour": 2, &"sugar": 2, &"cream": 1}, Color(0.55, 0.7, 0.95))
+		{&"flour": 2, &"sugar": 2, &"cream": 1}, Color(0.55, 0.7, 0.95),
+		&"cupcake", 20, 22, "Collect 20 cupcakes")
 	_add_order(&"order_taylor", "Taylor", &"chocolate_strawberries", "level_03",
 		275, 45, 10, OrderTemplate.Difficulty.MEDIUM,
-		{&"chocolate": 3, &"strawberries": 2}, Color(0.7, 0.85, 0.55))
+		{&"chocolate": 3, &"strawberries": 2}, Color(0.7, 0.85, 0.55),
+		&"strawberry", 25, 20, "Collect 25 strawberries")
 	_add_order(&"order_chris", "Chris", &"classic_cupcakes", "level_04",
 		325, 55, 12, OrderTemplate.Difficulty.MEDIUM,
-		{&"flour": 2, &"cookies": 1, &"cream": 1}, Color(0.95, 0.75, 0.45))
+		{&"flour": 2, &"cookies": 1, &"cream": 1}, Color(0.95, 0.75, 0.45),
+		&"cookie", 20, 24, "Collect 20 cookies")
 	_add_order(&"order_morgan", "Morgan", &"candied_grapes", "level_05",
 		450, 75, 18, OrderTemplate.Difficulty.HARD,
-		{&"grapes": 3, &"sugar": 2}, Color(0.65, 0.45, 0.85))
+		{&"grapes": 3, &"sugar": 2}, Color(0.65, 0.45, 0.85),
+		&"candy", 40, 18, "Collect 40 candy pieces")
 	# Extra filler orders so the board can rotate after completions.
 	_add_order(&"order_avery", "Avery", &"chocolate_strawberries", "level_01",
 		160, 28, 6, OrderTemplate.Difficulty.EASY,
-		{&"chocolate": 1, &"strawberries": 2}, Color(0.9, 0.6, 0.5))
+		{&"chocolate": 1, &"strawberries": 2}, Color(0.9, 0.6, 0.5),
+		&"strawberry", 20, 20, "Collect 20 strawberries")
 	_add_order(&"order_riley", "Riley", &"classic_cupcakes", "level_02",
 		210, 38, 8, OrderTemplate.Difficulty.EASY,
-		{&"flour": 2, &"sugar": 1}, Color(0.5, 0.8, 0.75))
+		{&"flour": 2, &"sugar": 1}, Color(0.5, 0.8, 0.75),
+		&"cupcake", 20, 22, "Collect 20 cupcakes")
 	_add_order(&"order_sam", "Sam", &"cookies_cream_cupcakes", "level_04",
 		360, 60, 14, OrderTemplate.Difficulty.MEDIUM,
-		{&"cookies": 2, &"cream": 1}, Color(0.8, 0.8, 0.9))
+		{&"cookies": 2, &"cream": 1}, Color(0.8, 0.8, 0.9),
+		&"cookie", 20, 24, "Collect 20 cookies")
 	_add_order(&"order_casey", "Casey", &"caramel_donuts", "level_05",
 		480, 80, 20, OrderTemplate.Difficulty.HARD,
-		{&"caramel": 2, &"flour": 1}, Color(0.85, 0.55, 0.35))
+		{&"caramel": 2, &"flour": 1}, Color(0.85, 0.55, 0.35),
+		&"candy", 40, 18, "Collect 40 candy pieces")
 	order_sequence = [
 		&"order_mia", &"order_jordan", &"order_taylor", &"order_chris", &"order_morgan",
 		&"order_avery", &"order_riley", &"order_sam", &"order_casey",
@@ -249,7 +258,9 @@ func _build_orders() -> void:
 
 func _add_order(id: StringName, customer: String, recipe_id: StringName, level_id: String,
 		coins: int, xp: int, rep: int, diff: OrderTemplate.Difficulty,
-		ingredients_reward: Dictionary, color: Color) -> void:
+		ingredients_reward: Dictionary, color: Color,
+		target_piece: StringName = &"", target_amt: int = 0, moves: int = 0,
+		objective_desc: String = "") -> void:
 	var order := OrderTemplate.new()
 	order.order_id = id
 	order.customer_name = customer
@@ -262,6 +273,10 @@ func _add_order(id: StringName, customer: String, recipe_id: StringName, level_i
 	order.ingredient_rewards = ingredients_reward
 	order.customer_color = color
 	order.requires_recipe_unlocked = true
+	order.target_piece_id = target_piece
+	order.target_amount = target_amt
+	order.move_limit = moves
+	order.objective_description = objective_desc
 	orders[str(id)] = order
 
 

@@ -10,14 +10,15 @@ var _display: Panel
 var _checkout: Panel
 var _order_desk: Panel
 var _manager: Panel
+var _counter: Panel
 var _sign: Label
-var _seating: Panel
 var _oven_label: Label
 var _mixer_label: Label
 var _display_label: Label
 var _checkout_label: Label
 var _order_label: Label
 var _manager_label: Label
+var _counter_label: Label
 var _worker_layer: Control
 var _worker_nodes: Dictionary = {}
 
@@ -57,7 +58,7 @@ func _build() -> void:
 	_checkout = _make_station(Color(0.7, 0.55, 0.45), Vector2(0.52, 0.48), Vector2(0.4, 0.22))
 	_order_desk = _make_station(Color(0.78, 0.72, 0.88), Vector2(0.34, 0.48), Vector2(0.16, 0.22))
 	_manager = _make_station(Color(0.55, 0.45, 0.5), Vector2(0.38, 0.28), Vector2(0.14, 0.16))
-	_seating = _make_station(Color(0.92, 0.78, 0.72), Vector2(0.08, 0.88), Vector2(0.84, 0.08))
+	_counter = _make_station(Color(0.92, 0.82, 0.7), Vector2(0.08, 0.86), Vector2(0.84, 0.08))
 
 	_display_label = _label_on(_display)
 	_oven_label = _label_on(_oven)
@@ -65,6 +66,7 @@ func _build() -> void:
 	_checkout_label = _label_on(_checkout)
 	_order_label = _label_on(_order_desk)
 	_manager_label = _label_on(_manager)
+	_counter_label = _label_on(_counter)
 
 	_worker_layer = Control.new()
 	_worker_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -107,7 +109,7 @@ func _label_on(panel: Panel) -> Label:
 
 func _layout() -> void:
 	_sign.size = Vector2(size.x - 40, 28)
-	for panel in [_display, _oven, _mixer, _checkout, _order_desk, _manager, _seating]:
+	for panel in [_display, _oven, _mixer, _checkout, _order_desk, _manager, _counter]:
 		if panel == null:
 			continue
 		var ap: Vector2 = panel.get_meta("ap")
@@ -125,6 +127,7 @@ func refresh() -> void:
 	_apply_station(_checkout, _checkout_label, &"checkout", Color(0.7, 0.55, 0.45))
 	_order_label.text = "Order Desk"
 	_manager_label.text = "Manager"
+	_counter_label.text = "Dessert Counter"
 	_rebuild_workers()
 
 

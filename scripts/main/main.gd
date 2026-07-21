@@ -1,5 +1,5 @@
 extends Control
-## Legacy boot scene. Prefer title.tscn (project main scene).
+## Legacy boot scene. Prefer scenes/main/title_screen.tscn (project main scene).
 ## Kept as a redirect so old shortcuts still work.
 
 
