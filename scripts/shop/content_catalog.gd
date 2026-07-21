@@ -10,6 +10,8 @@ var orders: Dictionary = {} # order_id -> OrderTemplate
 var equipment: Dictionary = {} # equipment_id -> EquipmentData
 var ingredients: Dictionary = {} # ingredient_id -> IngredientData
 var levels: Dictionary = {} # level_id -> LevelConfig
+var workers: Dictionary = {} # worker_id -> WorkerData
+var worker_sequence: Array[StringName] = []
 var order_sequence: Array[StringName] = []
 
 
@@ -19,6 +21,7 @@ func build() -> void:
 	_build_recipes()
 	_build_levels()
 	_build_orders()
+	_build_workers()
 
 
 func get_recipe(id: StringName) -> RecipeData:
@@ -35,6 +38,10 @@ func get_equipment(id: StringName) -> EquipmentData:
 
 func get_ingredient(id: StringName) -> IngredientData:
 	return ingredients.get(str(id), ingredients.get(id)) as IngredientData
+
+
+func get_worker(id: StringName) -> WorkerData:
+	return workers.get(str(id), workers.get(id)) as WorkerData
 
 
 func get_level(level_id: String) -> LevelConfig:
@@ -256,3 +263,62 @@ func _add_order(id: StringName, customer: String, recipe_id: StringName, level_i
 	order.customer_color = color
 	order.requires_recipe_unlocked = true
 	orders[str(id)] = order
+
+
+func _build_workers() -> void:
+	_add_worker(&"ava", "Ava", WorkerData.Role.BAKER, WorkerData.Rarity.COMMON,
+		"A cheerful baker who keeps the ovens humming.",
+		1, 0, 300, WorkerData.Station.OVEN, true,
+		&"order_coins", 0.03, 0.0, &"", 0.0,
+		Color(0.95, 0.65, 0.7), Color(0.9, 0.45, 0.55))
+	_add_worker(&"marcus", "Marcus", WorkerData.Role.CASHIER, WorkerData.Rarity.COMMON,
+		"Friendly cashier who turns smiles into reputation.",
+		2, 0, 450, WorkerData.Station.CHECKOUT, false,
+		&"order_reputation", 0.02, 0.0, &"", 0.0,
+		Color(0.55, 0.7, 0.95), Color(0.35, 0.5, 0.85))
+	_add_worker(&"lily", "Lily", WorkerData.Role.MIXER_SPECIALIST, WorkerData.Rarity.UNCOMMON,
+		"Mixer specialist who helps the team learn faster.",
+		3, 0, 750, WorkerData.Station.MIXER, false,
+		&"order_xp", 0.03, 0.0, &"", 0.0,
+		Color(0.7, 0.9, 0.75), Color(0.4, 0.75, 0.55))
+	_add_worker(&"noah", "Noah", WorkerData.Role.DISPLAY_DECORATOR, WorkerData.Rarity.UNCOMMON,
+		"Display decorator who attracts walk-in shoppers.",
+		4, 0, 1000, WorkerData.Station.DISPLAY_CASE, false,
+		&"passive_income", 0.05, 0.0, &"", 0.0,
+		Color(0.95, 0.8, 0.5), Color(0.85, 0.6, 0.3))
+	_add_worker(&"sofia", "Sofia", WorkerData.Role.ORDER_COORDINATOR, WorkerData.Rarity.RARE,
+		"Order coordinator who snags bonus ingredients.",
+		5, 0, 1500, WorkerData.Station.ORDER_DESK, false,
+		&"bonus_ingredients", 0.02, 0.05, &"", 0.0,
+		Color(0.8, 0.65, 0.95), Color(0.6, 0.4, 0.85))
+	_add_worker(&"chef_andre", "Chef Andre", WorkerData.Role.STORE_MANAGER, WorkerData.Rarity.PREMIUM,
+		"Store manager who boosts every reward and walk-in sales.",
+		8, 150, 4000, WorkerData.Station.MANAGER, false,
+		&"all_order_rewards", 0.02, 0.0, &"passive_income", 0.03,
+		Color(0.45, 0.35, 0.4), Color(0.3, 0.22, 0.28))
+	worker_sequence = [&"ava", &"marcus", &"lily", &"noah", &"sofia", &"chef_andre"]
+
+
+func _add_worker(id: StringName, name: String, role: WorkerData.Role, rarity: WorkerData.Rarity,
+		desc: String, level_req: int, rep_req: int, hire_cost: int, station: WorkerData.Station,
+		available: bool, primary_type: StringName, primary_per: float, primary_base: float,
+		secondary_type: StringName, secondary_per: float, portrait: Color, body: Color) -> void:
+	var worker := WorkerData.new()
+	worker.worker_id = id
+	worker.display_name = name
+	worker.role = role
+	worker.rarity = rarity
+	worker.description = desc
+	worker.unlock_player_level = level_req
+	worker.unlock_reputation = rep_req
+	worker.hire_cost = hire_cost
+	worker.compatible_station = station
+	worker.available_at_start = available
+	worker.primary_bonus_type = primary_type
+	worker.primary_bonus_per_level = primary_per
+	worker.primary_bonus_base = primary_base
+	worker.secondary_bonus_type = secondary_type
+	worker.secondary_bonus_per_level = secondary_per
+	worker.portrait_color = portrait
+	worker.body_color = body
+	workers[str(id)] = worker

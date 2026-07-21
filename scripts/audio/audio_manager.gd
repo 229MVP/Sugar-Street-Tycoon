@@ -11,6 +11,15 @@ enum Sfx {
 	LEVEL_UP,
 	SHOP_OPENED,
 	POPUP_OPENED,
+	WORKER_HIRED,
+	WORKER_UPGRADED,
+	WORKER_ASSIGNED,
+	WORKER_REMOVED,
+	PASSIVE_COLLECTED,
+	OFFLINE_EARNINGS,
+	CUSTOMER_ENTER,
+	CUSTOMER_LEAVE,
+	WORKER_NOTIFICATION,
 }
 
 var enabled: bool = true
@@ -28,14 +37,9 @@ func _ready() -> void:
 func play(sfx: Sfx) -> void:
 	if not enabled:
 		return
-	# Placeholder: no stream assigned yet — keep hooks centralized.
 	var player: AudioStreamPlayer = _players.get(sfx)
 	if player and player.stream:
 		player.play()
-	else:
-		# Dev-visible breadcrumb without spamming every frame.
-		if OS.is_debug_build():
-			pass
 
 
 func play_button() -> void:

@@ -7,6 +7,7 @@ const GAMEPLAY_SCENE := "res://scenes/gameplay/gameplay.tscn"
 const RECIPE_BOOK_SCENE := "res://scenes/recipes/recipe_book.tscn"
 const UPGRADE_SCENE := "res://scenes/upgrades/upgrade_shop.tscn"
 const INVENTORY_SCENE := "res://scenes/inventory/inventory_screen.tscn"
+const WORKER_ROSTER_SCENE := "res://scenes/workers/worker_roster.tscn"
 
 signal scene_changed(path: String)
 
@@ -35,6 +36,10 @@ func go_upgrades() -> void:
 
 func go_inventory() -> void:
 	_change(INVENTORY_SCENE)
+
+
+func go_workers() -> void:
+	_change(WORKER_ROSTER_SCENE)
 
 
 func start_order_level(order_id: String) -> void:

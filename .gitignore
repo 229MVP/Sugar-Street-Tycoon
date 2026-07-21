@@ -22,3 +22,6 @@ ios/
 *.apk
 *.aab
 *.ipa
+
+.env.local
+.env

@@ -14,10 +14,12 @@ static func save_game(data: SaveData) -> bool:
 	if data == null:
 		push_error("SaveManager: cannot save null data")
 		return false
-	data.last_saved_unix = int(Time.get_unix_time_from_system())
+	var now := int(Time.get_unix_time_from_system())
+	data.last_saved_unix = now
+	data.last_active_unix = now
+	data.version = SaveData.SAVE_VERSION
 	var dict := _to_dict(data)
 	var json := JSON.stringify(dict, "\t")
-	# Keep a backup of the previous good save.
 	if FileAccess.file_exists(SAVE_PATH):
 		var prev := FileAccess.get_file_as_string(SAVE_PATH)
 		var bak := FileAccess.open(BACKUP_PATH, FileAccess.WRITE)
@@ -65,6 +67,15 @@ static func write_corrupted_save_for_debug() -> void:
 		file.close()
 
 
+static func write_corrupted_worker_data(data: SaveData) -> void:
+	## Leaves core progress intact but breaks worker fields for recovery tests.
+	data.worker_levels = {"ava": -5, "ghost": 99}
+	data.worker_assignments = {"oven": "ava", "mixer": "ava", "checkout": "nobody"}
+	data.stored_passive_coins = -50.0
+	data.hired_workers = {"ava": true}
+	save_game(data)
+
+
 static func _load_backup_or_default() -> SaveData:
 	if FileAccess.file_exists(BACKUP_PATH):
 		var text := FileAccess.get_file_as_string(BACKUP_PATH)
@@ -82,6 +93,7 @@ static func _to_dict(data: SaveData) -> Dictionary:
 	return {
 		"version": data.version,
 		"last_saved_unix": data.last_saved_unix,
+		"last_active_unix": data.last_active_unix,
 		"player_level": data.player_level,
 		"experience": data.experience,
 		"coins": data.coins,
@@ -100,13 +112,24 @@ static func _to_dict(data: SaveData) -> Dictionary:
 		"active_order_id": data.active_order_id,
 		"visible_order_ids": data.visible_order_ids.duplicate(),
 		"settings": data.settings.duplicate(true),
+		"worker_save_version": data.worker_save_version,
+		"hired_workers": _stringify_keys(data.hired_workers),
+		"worker_levels": _stringify_keys(data.worker_levels),
+		"worker_assignments": _stringify_keys(data.worker_assignments),
+		"worker_unlock_flags": _stringify_keys(data.worker_unlock_flags),
+		"stored_passive_coins": data.stored_passive_coins,
+		"last_passive_tick_unix": data.last_passive_tick_unix,
+		"last_offline_calc_unix": data.last_offline_calc_unix,
+		"offline_pending_popup": data.offline_pending_popup.duplicate(true),
 	}
 
 
 static func _from_dict(dict: Dictionary) -> SaveData:
 	var data := SaveData.create_default()
-	data.version = int(dict.get("version", SaveData.SAVE_VERSION))
+	var old_version := int(dict.get("version", 1))
+	data.version = old_version
 	data.last_saved_unix = int(dict.get("last_saved_unix", 0))
+	data.last_active_unix = int(dict.get("last_active_unix", data.last_saved_unix))
 	data.player_level = maxi(1, int(dict.get("player_level", 1)))
 	data.experience = maxi(0, int(dict.get("experience", 0)))
 	data.coins = maxi(0, int(dict.get("coins", 500)))
@@ -136,6 +159,27 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	if typeof(settings) == TYPE_DICTIONARY:
 		for key in settings:
 			data.settings[key] = settings[key]
+
+	# Worker / passive migration (v1 → v2 defaults already present).
+	data.worker_save_version = int(dict.get("worker_save_version", 0))
+	data.hired_workers = _merge_dict({}, dict.get("hired_workers", {}))
+	data.worker_levels = _merge_dict({}, dict.get("worker_levels", {}))
+	data.worker_assignments = _merge_dict({}, dict.get("worker_assignments", {}))
+	data.worker_unlock_flags = _merge_dict(data.worker_unlock_flags, dict.get("worker_unlock_flags", {}))
+	data.stored_passive_coins = float(dict.get("stored_passive_coins", 0.0))
+	data.last_passive_tick_unix = int(dict.get("last_passive_tick_unix", data.last_active_unix))
+	data.last_offline_calc_unix = int(dict.get("last_offline_calc_unix", 0))
+	var offline_popup: Variant = dict.get("offline_pending_popup", {})
+	data.offline_pending_popup = offline_popup.duplicate(true) if typeof(offline_popup) == TYPE_DICTIONARY else {}
+
+	if old_version < 2 or data.worker_save_version < 1:
+		if OS.is_debug_build():
+			print("SaveManager: migrating save v%d → worker system defaults" % old_version)
+		data.apply_worker_defaults()
+	else:
+		data.apply_worker_defaults()
+
+	data.version = SaveData.SAVE_VERSION
 	return data
 
 

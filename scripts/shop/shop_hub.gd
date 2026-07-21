@@ -27,31 +27,70 @@ var _confirm: ConfirmPopup
 var _order_detail: OrderDetailPopup
 var _reward_popup: RewardPopup
 var _level_up_popup: LevelUpPopup
+var _offline_popup: OfflineEarningsPopup
+var _passive_panel: PassiveIncomePanel
+var _activity: ShopActivityController
+var _worker_info: ConfirmPopup
 var _debug_panel: ShopDebugPanel
 var _recipe_badge: NotificationBadge
 var _upgrade_badge: NotificationBadge
+var _workers_badge: NotificationBadge
 var _order_badges: Dictionary = {}
+var _worker_status_label: Label
+var _passive_timer: float = 0.0
 
 
 func _ready() -> void:
 	_visual = ShopVisual.new()
 	_visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shop_visual_host.add_child(_visual)
+	_visual.worker_selected.connect(_on_shop_worker_selected)
+
+	_activity = ShopActivityController.new()
+	add_child(_activity)
+	_activity.setup(shop_visual_host)
+
+	_passive_panel = PassiveIncomePanel.new()
+	_passive_panel.custom_minimum_size = Vector2(0, 110)
+	# Insert above orders.
+	var vbox := shop_name_label.get_parent().get_parent() # Header -> VBox
+	if vbox is VBoxContainer:
+		var orders_title_idx := -1
+		for i in vbox.get_child_count():
+			var child := vbox.get_child(i)
+			if child is Label and (child as Label).text.begins_with("Customer"):
+				orders_title_idx = i
+				break
+		if orders_title_idx >= 0:
+			vbox.add_child(_passive_panel)
+			vbox.move_child(_passive_panel, orders_title_idx)
+		else:
+			vbox.add_child(_passive_panel)
+
+	_worker_status_label = Label.new()
+	_worker_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_worker_status_label.add_theme_font_size_override("font_size", 12)
+	shop_level_label.get_parent().add_child(_worker_status_label)
 
 	_confirm = ConfirmPopup.new()
 	popup_host.add_child(_confirm)
+	_worker_info = ConfirmPopup.new()
+	popup_host.add_child(_worker_info)
 	_order_detail = OrderDetailPopup.new()
 	popup_host.add_child(_order_detail)
 	_reward_popup = RewardPopup.new()
 	popup_host.add_child(_reward_popup)
 	_level_up_popup = LevelUpPopup.new()
 	popup_host.add_child(_level_up_popup)
+	_offline_popup = OfflineEarningsPopup.new()
+	popup_host.add_child(_offline_popup)
 
 	_recipe_badge = NotificationBadge.new()
 	recipe_button.add_child(_recipe_badge)
-	_recipe_badge.position = Vector2(recipe_button.size.x - 18, -4)
 	_upgrade_badge = NotificationBadge.new()
 	upgrade_button.add_child(_upgrade_badge)
+	_workers_badge = NotificationBadge.new()
+	workers_button.add_child(_workers_badge)
 
 	if GameState.DEBUG_TOOLS_ENABLED and OS.is_debug_build():
 		_debug_panel = ShopDebugPanel.new()
@@ -69,11 +108,15 @@ func _ready() -> void:
 		AudioManager.play_button()
 		SceneRouter.go_inventory()
 	)
+	workers_button.disabled = false
+	workers_button.text = "Workers"
+	workers_button.pressed.connect(func():
+		AudioManager.play_button()
+		SceneRouter.go_workers()
+	)
 	settings_button.pressed.connect(_on_settings)
 	title_button.pressed.connect(_on_title)
 	play_button.pressed.connect(_on_play_selected)
-	workers_button.disabled = true
-	workers_button.text = "Workers (Locked)"
 	locations_button.disabled = true
 	locations_button.text = "Locations (Locked)"
 
@@ -81,12 +124,34 @@ func _ready() -> void:
 	_order_detail.complete_pressed.connect(_complete_order)
 	_reward_popup.continue_pressed.connect(_after_reward)
 	_level_up_popup.continue_pressed.connect(func(): pass)
+	_offline_popup.collected.connect(func():
+		_passive_panel.refresh()
+		refresh()
+	)
 
 	GameState.state_changed.connect(refresh)
 	GameState.notifications_changed.connect(_refresh_badges)
+	GameState.passive_income_changed.connect(func(_s, _r): _passive_panel.refresh())
+	GameState.offline_earnings_ready.connect(_on_offline_ready)
+	set_process(true)
 	AudioManager.play(AudioManager.Sfx.SHOP_OPENED)
 	refresh()
 	_refresh_badges()
+	# Show pending offline popup if present from load.
+	if not GameState.data.offline_pending_popup.is_empty():
+		_on_offline_ready(GameState.data.offline_pending_popup)
+
+
+func _process(delta: float) -> void:
+	_passive_timer += delta
+	if _passive_timer >= 1.0:
+		_passive_timer = 0.0
+		GameState.tick_passive_income()
+		if _passive_panel:
+			_passive_panel.refresh()
+	var modal_open := _order_detail.visible or _reward_popup.visible or _confirm.visible or _offline_popup.visible or _level_up_popup.visible
+	if _activity:
+		_activity.set_paused(modal_open)
 
 
 func refresh() -> void:
@@ -99,9 +164,13 @@ func refresh() -> void:
 	stars_label.text = "Stars %d" % d.stars
 	reputation_label.text = "Rep %d" % d.reputation
 	shop_level_label.text = "Shop Lv.%d" % d.shop_level
+	if _worker_status_label:
+		_worker_status_label.text = "Workers assigned: %d / 6" % GameState.get_assigned_worker_count()
 	_rebuild_orders()
 	if _visual:
 		_visual.refresh()
+	if _passive_panel:
+		_passive_panel.refresh()
 
 
 func _rebuild_orders() -> void:
@@ -277,6 +346,36 @@ func _on_title() -> void:
 func _refresh_badges() -> void:
 	_recipe_badge.set_count(GameState.recipe_unlock_available_count())
 	_upgrade_badge.set_count(GameState.affordable_upgrade_count())
-	# Reposition after layout.
+	# Workers badge priority: offline/full storage > hire > upgrade > empty station
+	var worker_count := 0
+	var info := GameState.get_passive_income_info()
+	if bool(info.get("storage_full", false)) or float(info.get("stored", 0.0)) >= 1.0:
+		worker_count = maxi(worker_count, 1)
+	worker_count = maxi(worker_count, GameState.worker_hire_available_count())
+	if worker_count == 0:
+		worker_count = GameState.worker_upgrade_available_count()
+	if worker_count == 0:
+		worker_count = GameState.empty_compatible_station_count()
+	_workers_badge.set_count(worker_count)
 	_recipe_badge.position = Vector2(maxf(recipe_button.size.x - 18, 60), -4)
 	_upgrade_badge.position = Vector2(maxf(upgrade_button.size.x - 18, 60), -4)
+	_workers_badge.position = Vector2(maxf(workers_button.size.x - 18, 60), -4)
+
+
+func _on_offline_ready(payload: Dictionary) -> void:
+	if payload.is_empty():
+		return
+	_offline_popup.show_payload(payload)
+
+
+func _on_shop_worker_selected(worker_id: StringName) -> void:
+	var worker := GameState.catalog.get_worker(worker_id)
+	if worker == null:
+		return
+	var level := GameState.get_worker_level(worker_id)
+	_worker_info.show_confirm(
+		worker.display_name,
+		"%s · Lv.%d\n%s\nStation: %s" % [worker.role_label(), level, worker.description, worker.station_label()],
+		"OK",
+		"Close"
+	)

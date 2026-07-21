@@ -2,7 +2,8 @@ class_name SaveData
 extends Resource
 ## Serializable player / shop progress. Versioned for forward-compatible loads.
 
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
+const WORKER_SAVE_VERSION := 1
 
 enum OrderStatus {
 	AVAILABLE,
@@ -16,6 +17,7 @@ enum OrderStatus {
 
 @export var version: int = SAVE_VERSION
 @export var last_saved_unix: int = 0
+@export var last_active_unix: int = 0
 
 # Player
 @export var player_level: int = 1
@@ -28,19 +30,32 @@ enum OrderStatus {
 @export var shop_name: String = "Sugar Street Starter Shop"
 @export var shop_level: int = 1
 
-# Progression maps (serialized as Dictionaries)
-@export var unlocked_recipes: Dictionary = {} # recipe_id -> true
-@export var equipment_levels: Dictionary = {} # equipment_id -> level
-@export var ingredients: Dictionary = {} # ingredient_id -> amount
-@export var best_level_stars: Dictionary = {} # level_id -> 1..3
-@export var best_level_scores: Dictionary = {} # level_id -> score
+# Progression maps
+@export var unlocked_recipes: Dictionary = {}
+@export var equipment_levels: Dictionary = {}
+@export var ingredients: Dictionary = {}
+@export var best_level_stars: Dictionary = {}
+@export var best_level_scores: Dictionary = {}
 
 # Orders
-@export var order_statuses: Dictionary = {} # order_id -> OrderStatus int
-@export var order_level_results: Dictionary = {} # order_id -> {score, moves_remaining, stars}
+@export var order_statuses: Dictionary = {}
+@export var order_level_results: Dictionary = {}
 @export var completed_order_ids: Array[String] = []
 @export var active_order_id: String = ""
-@export var visible_order_ids: Array[String] = [] ## Up to 3 shown in hub
+@export var visible_order_ids: Array[String] = []
+
+# Workers (v2)
+@export var worker_save_version: int = WORKER_SAVE_VERSION
+@export var hired_workers: Dictionary = {} ## worker_id -> true
+@export var worker_levels: Dictionary = {} ## worker_id -> level 1..10
+@export var worker_assignments: Dictionary = {} ## station_id -> worker_id
+@export var worker_unlock_flags: Dictionary = {} ## worker_id -> true (explicit unlock)
+
+# Passive / offline income (v2)
+@export var stored_passive_coins: float = 0.0
+@export var last_passive_tick_unix: int = 0
+@export var last_offline_calc_unix: int = 0
+@export var offline_pending_popup: Dictionary = {} ## shown once then cleared on collect/dismiss
 
 # Settings
 @export var settings: Dictionary = {
@@ -52,6 +67,7 @@ enum OrderStatus {
 static func create_default() -> SaveData:
 	var data := SaveData.new()
 	data.version = SAVE_VERSION
+	data.worker_save_version = WORKER_SAVE_VERSION
 	data.player_level = 1
 	data.experience = 0
 	data.coins = 500
@@ -88,14 +104,53 @@ static func create_default() -> SaveData:
 	data.visible_order_ids = []
 	data.best_level_stars = {}
 	data.best_level_scores = {}
-	data.last_saved_unix = int(Time.get_unix_time_from_system())
+	data.hired_workers = {}
+	data.worker_levels = {}
+	data.worker_assignments = {}
+	data.worker_unlock_flags = {"ava": true}
+	data.stored_passive_coins = 0.0
+	var now := int(Time.get_unix_time_from_system())
+	data.last_saved_unix = now
+	data.last_active_unix = now
+	data.last_passive_tick_unix = now
+	data.last_offline_calc_unix = now
+	data.offline_pending_popup = {}
 	return data
+
+
+func apply_worker_defaults() -> void:
+	## Called during migration / repair for older saves.
+	if worker_save_version < 1:
+		worker_save_version = WORKER_SAVE_VERSION
+	if typeof(hired_workers) != TYPE_DICTIONARY:
+		hired_workers = {}
+	if typeof(worker_levels) != TYPE_DICTIONARY:
+		worker_levels = {}
+	if typeof(worker_assignments) != TYPE_DICTIONARY:
+		worker_assignments = {}
+	if typeof(worker_unlock_flags) != TYPE_DICTIONARY:
+		worker_unlock_flags = {}
+	if not worker_unlock_flags.has("ava"):
+		worker_unlock_flags["ava"] = true
+	if stored_passive_coins < 0.0:
+		stored_passive_coins = 0.0
+	var now := int(Time.get_unix_time_from_system())
+	if last_active_unix <= 0:
+		last_active_unix = now
+	if last_passive_tick_unix <= 0:
+		last_passive_tick_unix = now
+	if last_offline_calc_unix <= 0:
+		last_offline_calc_unix = now
+	if typeof(offline_pending_popup) != TYPE_DICTIONARY:
+		offline_pending_popup = {}
+	version = maxi(version, SAVE_VERSION)
 
 
 func duplicate_deep() -> SaveData:
 	var copy := SaveData.new()
 	copy.version = version
 	copy.last_saved_unix = last_saved_unix
+	copy.last_active_unix = last_active_unix
 	copy.player_level = player_level
 	copy.experience = experience
 	copy.coins = coins
@@ -114,4 +169,13 @@ func duplicate_deep() -> SaveData:
 	copy.active_order_id = active_order_id
 	copy.visible_order_ids = visible_order_ids.duplicate()
 	copy.settings = settings.duplicate(true)
+	copy.worker_save_version = worker_save_version
+	copy.hired_workers = hired_workers.duplicate(true)
+	copy.worker_levels = worker_levels.duplicate(true)
+	copy.worker_assignments = worker_assignments.duplicate(true)
+	copy.worker_unlock_flags = worker_unlock_flags.duplicate(true)
+	copy.stored_passive_coins = stored_passive_coins
+	copy.last_passive_tick_unix = last_passive_tick_unix
+	copy.last_offline_calc_unix = last_offline_calc_unix
+	copy.offline_pending_popup = offline_pending_popup.duplicate(true)
 	return copy

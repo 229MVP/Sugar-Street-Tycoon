@@ -9,6 +9,13 @@ signal experience_changed(current: int, required: int, level: int)
 signal order_updated(order_id: String)
 signal recipe_unlocked(recipe_id: StringName)
 signal equipment_upgraded(equipment_id: StringName, new_level: int)
+signal worker_hired(worker_id: StringName)
+signal worker_upgraded(worker_id: StringName, new_level: int)
+signal worker_assigned(worker_id: StringName, station: String)
+signal worker_unassigned(worker_id: StringName)
+signal passive_income_changed(stored: float, rate: float)
+signal passive_collected(amount: int)
+signal offline_earnings_ready(payload: Dictionary)
 signal level_up(new_level: int, coin_reward: int)
 signal notifications_changed
 signal save_completed
@@ -19,17 +26,34 @@ var catalog := ContentCatalog.new()
 var data: SaveData
 var pending_level_ups: Array[Dictionary] = []
 var last_completion_rewards: Dictionary = {}
+var last_offline_payload: Dictionary = {}
 var _busy: bool = false
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	_rng.randomize()
 	catalog.build()
 	if SaveManager.has_save():
 		data = SaveManager.load_game()
 	else:
 		data = SaveData.create_default()
-	_ensure_order_board()
+	_post_load_setup()
 	emit_signal("state_changed")
+
+
+func _post_load_setup() -> void:
+	data.apply_worker_defaults()
+	WorkerManager.repair_assignments(catalog, data)
+	_ensure_order_board()
+	var offline := OfflineEarningsCalculator.calculate(catalog, data)
+	if offline.get("ok", false):
+		var added := OfflineEarningsCalculator.apply_to_storage(catalog, data, offline)
+		if added > 0 or int(offline.get("total_coins", 0)) > 0:
+			last_offline_payload = data.offline_pending_popup.duplicate(true)
+			offline_earnings_ready.emit(last_offline_payload)
+	PassiveIncomeManager.tick(catalog, data)
+	OfflineEarningsCalculator.mark_session_active(data)
 
 
 func has_save() -> bool:
@@ -38,18 +62,19 @@ func has_save() -> bool:
 
 func new_game() -> void:
 	data = SaveData.create_default()
-	_ensure_order_board()
+	_post_load_setup()
 	save_now()
 	state_changed.emit()
 
 
 func continue_game() -> void:
 	data = SaveManager.load_game()
-	_ensure_order_board()
+	_post_load_setup()
 	state_changed.emit()
 
 
 func save_now() -> void:
+	OfflineEarningsCalculator.mark_session_active(data)
 	SaveManager.save_game(data)
 	save_completed.emit()
 
@@ -241,9 +266,14 @@ func complete_order(order_id: String) -> Dictionary:
 		return {}
 
 	_busy = true
-	var rewards := RewardCalculator.compute_order_rewards(order, data)
+	var rewards := RewardCalculator.compute_order_rewards(order, data, catalog)
 	var result: Dictionary = data.order_level_results.get(order_id, {})
 	var stars_earned := int(result.get("stars", 1))
+	var breakdown: Dictionary = rewards.get("breakdown", {})
+	var chance := float(breakdown.get("bonus_ingredient_chance", 0.0))
+	var bonus_ings := RewardCalculator.roll_bonus_ingredients(order, chance, _rng)
+	for k in bonus_ings.keys():
+		rewards["ingredients"][k] = int(rewards["ingredients"].get(k, 0)) + int(bonus_ings[k])
 
 	data.coins += int(rewards["coins"])
 	data.reputation += int(rewards["reputation"])
@@ -271,6 +301,8 @@ func complete_order(order_id: String) -> Dictionary:
 		"reputation": rewards["reputation"],
 		"stars": stars_earned,
 		"ingredients": rewards["ingredients"],
+		"bonus_ingredients": bonus_ings,
+		"breakdown": breakdown,
 		"level_ups": pending_level_ups.duplicate(true),
 	}
 
@@ -332,6 +364,164 @@ func upgrade_equipment(equipment_id: StringName) -> Dictionary:
 	notifications_changed.emit()
 	state_changed.emit()
 	return {"ok": true, "reason": "", "new_level": next_level}
+
+
+# ---------------------------------------------------------------------------
+# Workers
+# ---------------------------------------------------------------------------
+
+func get_worker(worker_id: StringName) -> WorkerData:
+	return catalog.get_worker(worker_id)
+
+
+func is_worker_hired(worker_id: StringName) -> bool:
+	return WorkerManager.is_hired(data, str(worker_id))
+
+
+func get_worker_level(worker_id: StringName) -> int:
+	return WorkerManager.get_level(data, str(worker_id))
+
+
+func can_hire_worker(worker_id: StringName) -> Dictionary:
+	return WorkerManager.can_hire(catalog.get_worker(worker_id), data)
+
+
+func hire_worker(worker_id: StringName) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var worker := catalog.get_worker(worker_id)
+	var result := WorkerManager.hire(worker, data)
+	if not result.get("ok", false):
+		return result
+	save_now()
+	coins_changed.emit(data.coins)
+	worker_hired.emit(worker_id)
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func can_upgrade_worker(worker_id: StringName) -> Dictionary:
+	return WorkerManager.can_upgrade(catalog.get_worker(worker_id), data)
+
+
+func upgrade_worker(worker_id: StringName) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var worker := catalog.get_worker(worker_id)
+	var result := WorkerManager.upgrade(worker, data)
+	if not result.get("ok", false):
+		return result
+	save_now()
+	coins_changed.emit(data.coins)
+	worker_upgraded.emit(worker_id, int(result.get("new_level", 1)))
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func assign_worker(worker_id: StringName, station: WorkerData.Station) -> Dictionary:
+	var worker := catalog.get_worker(worker_id)
+	var result := WorkerManager.assign(worker, data, station)
+	if not result.get("ok", false):
+		return result
+	save_now()
+	worker_assigned.emit(worker_id, WorkerData.station_to_string(station))
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func unassign_worker(worker_id: StringName) -> Dictionary:
+	var result := WorkerManager.unassign(data, str(worker_id))
+	if not result.get("ok", false):
+		return result
+	save_now()
+	worker_unassigned.emit(worker_id)
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func get_assigned_worker_count() -> int:
+	return data.worker_assignments.size()
+
+
+func preview_order_rewards(order: OrderTemplate) -> Dictionary:
+	return RewardCalculator.compute_order_rewards(order, data, catalog)
+
+
+func worker_hire_available_count() -> int:
+	var count := 0
+	for id in catalog.workers.keys():
+		if can_hire_worker(StringName(id)).get("ok", false):
+			count += 1
+	return count
+
+
+func worker_upgrade_available_count() -> int:
+	var count := 0
+	for id in catalog.workers.keys():
+		if can_upgrade_worker(StringName(id)).get("ok", false):
+			count += 1
+	return count
+
+
+func empty_compatible_station_count() -> int:
+	var count := 0
+	for id in catalog.workers.keys():
+		var worker: WorkerData = catalog.workers[id]
+		if not is_worker_hired(worker.worker_id):
+			continue
+		if WorkerManager.assigned_station_of(data, str(worker.worker_id)) != WorkerData.Station.NONE:
+			continue
+		if WorkerManager.occupant_of(data, worker.compatible_station) == "":
+			count += 1
+	return count
+
+
+# ---------------------------------------------------------------------------
+# Passive / offline income
+# ---------------------------------------------------------------------------
+
+func tick_passive_income() -> void:
+	var added := PassiveIncomeManager.tick(catalog, data)
+	if added > 0.0:
+		var info := PassiveIncomeManager.coins_per_minute(catalog, data)
+		passive_income_changed.emit(data.stored_passive_coins, float(info["rate"]))
+		notifications_changed.emit()
+
+
+func get_passive_income_info() -> Dictionary:
+	var info := PassiveIncomeManager.coins_per_minute(catalog, data)
+	info["stored"] = data.stored_passive_coins
+	info["storage_full"] = data.stored_passive_coins >= float(info["max_storage_coins"]) - 0.01
+	return info
+
+
+func collect_passive_income() -> int:
+	if _busy:
+		return 0
+	_busy = true
+	tick_passive_income()
+	var amount := PassiveIncomeManager.collect(data)
+	if amount > 0:
+		data.offline_pending_popup = {}
+		save_now()
+		coins_changed.emit(data.coins)
+		passive_collected.emit(amount)
+		var info := get_passive_income_info()
+		passive_income_changed.emit(0.0, float(info["rate"]))
+		notifications_changed.emit()
+		state_changed.emit()
+	_busy = false
+	return amount
+
+
+func consume_offline_popup() -> Dictionary:
+	var payload := data.offline_pending_popup.duplicate(true)
+	data.offline_pending_popup = {}
+	return payload
 
 
 # ---------------------------------------------------------------------------
@@ -415,7 +605,103 @@ func debug_print_save() -> void:
 func debug_corrupt_save() -> void:
 	SaveManager.write_corrupted_save_for_debug()
 	data = SaveManager.load_game()
-	_ensure_order_board()
+	_post_load_setup()
+	state_changed.emit()
+
+
+func debug_unlock_all_workers() -> void:
+	for id in catalog.workers.keys():
+		data.worker_unlock_flags[str(id)] = true
+	data.player_level = maxi(data.player_level, 8)
+	data.reputation = maxi(data.reputation, 150)
+	save_now()
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_hire_all_workers() -> void:
+	debug_add_coins(50000)
+	debug_unlock_all_workers()
+	for id in catalog.workers.keys():
+		if not is_worker_hired(StringName(id)):
+			WorkerManager.hire(catalog.get_worker(StringName(id)), data)
+	save_now()
+	state_changed.emit()
+
+
+func debug_assign_all_workers() -> void:
+	for id in catalog.workers.keys():
+		var worker: WorkerData = catalog.workers[id]
+		if is_worker_hired(worker.worker_id):
+			WorkerManager.assign(worker, data, worker.compatible_station)
+	save_now()
+	state_changed.emit()
+
+
+func debug_clear_assignments() -> void:
+	data.worker_assignments.clear()
+	save_now()
+	state_changed.emit()
+
+
+func debug_set_worker_level(worker_id: StringName, level: int) -> void:
+	if not is_worker_hired(worker_id):
+		return
+	data.worker_levels[str(worker_id)] = clampi(level, 1, WorkerData.MAX_LEVEL)
+	save_now()
+	state_changed.emit()
+
+
+func debug_simulate_offline_hour() -> void:
+	data.last_active_unix = int(Time.get_unix_time_from_system()) - 3600
+	data.last_offline_calc_unix = 0
+	var calc := OfflineEarningsCalculator.calculate(catalog, data)
+	OfflineEarningsCalculator.apply_to_storage(catalog, data, calc)
+	last_offline_payload = data.offline_pending_popup.duplicate(true)
+	offline_earnings_ready.emit(last_offline_payload)
+	save_now()
+	state_changed.emit()
+
+
+func debug_fill_passive_storage() -> void:
+	PassiveIncomeManager.fill_storage_for_debug(catalog, data)
+	save_now()
+	passive_income_changed.emit(data.stored_passive_coins, float(get_passive_income_info()["rate"]))
+	state_changed.emit()
+
+
+func debug_clear_passive_storage() -> void:
+	data.stored_passive_coins = 0.0
+	save_now()
+	passive_income_changed.emit(0.0, float(get_passive_income_info()["rate"]))
+	state_changed.emit()
+
+
+func debug_print_workers() -> void:
+	print(JSON.stringify({
+		"hired": data.hired_workers,
+		"levels": data.worker_levels,
+		"assignments": data.worker_assignments,
+		"bonuses": WorkerBonusCalculator.summarize_active_bonuses(catalog, data),
+		"passive": get_passive_income_info(),
+	}, "\t"))
+
+
+func debug_corrupt_worker_save() -> void:
+	SaveManager.write_corrupted_worker_data(data)
+	data = SaveManager.load_game()
+	WorkerManager.repair_assignments(catalog, data)
+	save_now()
+	state_changed.emit()
+
+
+func debug_reset_workers_only() -> void:
+	data.hired_workers.clear()
+	data.worker_levels.clear()
+	data.worker_assignments.clear()
+	data.worker_unlock_flags = {"ava": true}
+	data.stored_passive_coins = 0.0
+	save_now()
 	state_changed.emit()
 
 
