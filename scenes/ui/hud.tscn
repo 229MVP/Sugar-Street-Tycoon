@@ -3,21 +3,26 @@
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top"]
-bg_color = Color(0.93, 0.45, 0.55, 0.95)
+bg_color = Color(0.91, 0.47, 0.45, 0.95)
 corner_radius_top_left = 0
 corner_radius_top_right = 0
 corner_radius_bottom_right = 16
 corner_radius_bottom_left = 16
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stat"]
-bg_color = Color(1, 1, 1, 0.88)
+bg_color = Color(1, 0.976, 0.945, 0.95)
 corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.91, 0.725, 0.639, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bar"]
-bg_color = Color(0.35, 0.72, 0.62, 1)
+bg_color = Color(0.514, 0.749, 0.655, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8

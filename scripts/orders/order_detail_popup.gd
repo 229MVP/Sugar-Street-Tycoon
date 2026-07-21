@@ -74,38 +74,17 @@ func show_order(order: OrderTemplate, status: int) -> void:
 	_order_id = str(order.order_id)
 	var recipe := GameState.catalog.get_recipe(order.recipe_id)
 	_title.text = "Order from %s" % order.customer_name
-	var rewards := GameState.preview_order_rewards(order)
-	var breakdown: Dictionary = rewards.get("breakdown", {})
-	var base: Dictionary = breakdown.get("base", {})
-	var equipment: Dictionary = breakdown.get("equipment", {})
-	var worker: Dictionary = breakdown.get("worker", {})
-	var worker_names: PackedStringArray = []
-	for c in worker.get("coin_contributors", []):
-		worker_names.append("%s (+%d%% coins)" % [str(c.get("name", "")), int(float(c.get("percent", 0.0)) * 100.0)])
-	for c in worker.get("all_contributors", []):
-		worker_names.append("%s (+%d%% all)" % [str(c.get("name", "")), int(float(c.get("percent", 0.0)) * 100.0)])
-	var worker_line := "None" if worker_names.is_empty() else ", ".join(worker_names)
-	var ingredients := ""
-	for k in order.ingredient_rewards.keys():
-		ingredients += "\n• %s x%d" % [str(k).capitalize(), int(order.ingredient_rewards[k])]
-	var chance := float(breakdown.get("bonus_ingredient_chance", 0.0))
-	_body.text = "Recipe: %s\nObjective: %s\nMoves: %d\nDifficulty: %s\n\nBase: %s coins / %d XP / %d rep\nAfter equipment: %s / %d / %d\nWorker bonus: %s\nFinal: %s coins / %d XP / %d rep\nBonus ingredient chance: %.0f%%%s\n\nStatus: %s" % [
+	var rewards := GameState.preview_order_rewards(order) if GameState.has_method("preview_order_rewards") else RewardCalculator.compute_order_rewards(order, GameState.data)
+	var message := order.customer_message if order.customer_message != "" else "Please help with my order!"
+	_body.text = "“%s”\n\nRecipe: %s\nObjective: %s\nMoves: %d\nDifficulty: %s\n\nRewards:\nCoins: %s\nXP: %d\nReputation: %d\n\nStatus: %s" % [
+		message,
 		recipe.display_name if recipe else str(order.recipe_id),
 		order.objective_text(),
 		order.move_limit if order.move_limit > 0 else 20,
 		order.difficulty_label(),
-		RewardCalculator.format_coins(int(base.get("coins", order.coin_reward))),
-		int(base.get("experience", order.experience_reward)),
-		int(base.get("reputation", order.reputation_reward)),
-		RewardCalculator.format_coins(int(equipment.get("coins", 0))),
-		int(equipment.get("experience", 0)),
-		int(equipment.get("reputation", 0)),
-		worker_line,
-		RewardCalculator.format_coins(int(rewards["coins"])),
-		int(rewards["experience"]),
-		int(rewards["reputation"]),
-		chance * 100.0,
-		ingredients,
+		RewardCalculator.format_coins(int(rewards.get("coins", order.coin_reward))),
+		int(rewards.get("experience", order.experience_reward)),
+		int(rewards.get("reputation", order.reputation_reward)),
 		_status_name(status),
 	]
 	_complete.visible = status == SaveData.OrderStatus.READY_TO_COMPLETE

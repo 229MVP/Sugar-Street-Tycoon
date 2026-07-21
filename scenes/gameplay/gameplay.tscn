@@ -27,7 +27,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.99, 0.9, 0.88, 1)
+color = Color(1, 0.96, 0.91, 1)
 
 [node name="BackgroundAccent" type="ColorRect" parent="."]
 layout_mode = 1
@@ -39,7 +39,7 @@ offset_top = -280.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
-color = Color(0.95, 0.78, 0.74, 0.55)
+color = Color(0.96, 0.79, 0.66, 0.45)
 
 [node name="GameController" type="Node" parent="."]
 script = ExtResource("2_controller")
