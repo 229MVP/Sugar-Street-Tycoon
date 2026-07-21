@@ -9,6 +9,7 @@ signal show_pause
 signal hide_overlays
 signal objective_pulse
 signal status_message(text: String)
+signal level_session_finished(won: bool, payload: Dictionary)
 
 @export var level_config: LevelConfig
 @export var board_path: NodePath
@@ -18,12 +19,24 @@ var score_tracker := ScoreTracker.new()
 var objective_tracker := ObjectiveTracker.new()
 var level_state := LevelState.new()
 
+## Optional shop-order session context injected by SceneRouter / gameplay root.
+var session_order_id: String = ""
+var session_recipe_id: StringName = &""
+
 var _board: MatchBoard
 var _waiting_for_swap_result: bool = false
+var _result_reported: bool = false
 
 
 func _ready() -> void:
 	add_to_group("game_controller")
+	# Prefer level/order injected by the shop flow.
+	if SceneRouter.pending_level_config != null:
+		level_config = SceneRouter.pending_level_config
+		session_order_id = SceneRouter.pending_order_id
+		var order := GameState.catalog.get_order(StringName(session_order_id))
+		if order:
+			session_recipe_id = order.recipe_id
 	if level_config == null:
 		level_config = load("res://resources/levels/level_01.tres") as LevelConfig
 	# Defer so gameplay_root can inject the board reference first.
@@ -32,6 +45,14 @@ func _ready() -> void:
 
 func set_board(board: MatchBoard) -> void:
 	_board = board
+
+
+func configure_session(order_id: String, config: LevelConfig) -> void:
+	session_order_id = order_id
+	level_config = config
+	var order := GameState.catalog.get_order(StringName(order_id))
+	if order:
+		session_recipe_id = order.recipe_id
 
 
 func _bootstrap() -> void:
@@ -69,6 +90,7 @@ func start_level(config: LevelConfig = null) -> void:
 		push_error("GameController: cannot start — invalid level config.")
 		return
 
+	_result_reported = false
 	hide_overlays.emit()
 	score_tracker.reset()
 	objective_tracker.setup(level_config.objectives)
@@ -79,7 +101,15 @@ func start_level(config: LevelConfig = null) -> void:
 		await _board.setup_from_config(level_config)
 
 	hud_refresh_requested.emit()
-	status_message.emit("Order up! Match desserts to fill the tray.")
+	var msg := "Order up! Match desserts to fill the tray."
+	if session_order_id != "":
+		var order := GameState.catalog.get_order(StringName(session_order_id))
+		if order:
+			msg = "Preparing %s for %s!" % [
+				GameState.catalog.get_recipe(order.recipe_id).display_name if GameState.catalog.get_recipe(order.recipe_id) else "order",
+				order.customer_name
+			]
+	status_message.emit(msg)
 
 
 func restart_level() -> void:
@@ -105,8 +135,16 @@ func resume_game() -> void:
 
 
 func exit_to_ready() -> void:
-	## Prototype exit: restart is enough; main menu comes later.
-	await restart_level()
+	## Return to shop hub when playing from an order; otherwise restart.
+	if session_order_id != "":
+		_report_loss_if_needed()
+		SceneRouter.return_to_shop_from_level()
+	else:
+		await restart_level()
+
+
+func return_to_shop() -> void:
+	SceneRouter.return_to_shop_from_level()
 
 
 func get_score() -> int:
@@ -126,11 +164,11 @@ func get_progress_text() -> String:
 
 
 func get_collected() -> int:
-	return objective_tracker.get_progress(objective_tracker.get_primary_piece_id())
+	return objective_tracker.get_total_collected()
 
 
 func get_target() -> int:
-	return objective_tracker.get_target(objective_tracker.get_primary_piece_id())
+	return objective_tracker.get_total_target()
 
 
 # ---------------------------------------------------------------------------
@@ -192,13 +230,50 @@ func _evaluate_end_conditions() -> void:
 		level_state.mark_won()
 		if _board:
 			_board.set_input_locked(true)
+		_report_win()
 		show_win.emit(score_tracker.score, level_state.moves_remaining)
 		return
 	if level_state.moves_remaining <= 0:
 		level_state.mark_lost()
 		if _board:
 			_board.set_input_locked(true)
+		_report_loss_if_needed()
 		show_loss.emit(objective_tracker.get_progress_text())
+
+
+func _report_win() -> void:
+	if _result_reported:
+		return
+	_result_reported = true
+	var payload := {
+		"order_id": session_order_id,
+		"score": score_tracker.score,
+		"moves_remaining": level_state.moves_remaining,
+		"move_limit": level_state.move_limit,
+		"stars": PlayerProgression.calculate_stars(level_state.moves_remaining, level_state.move_limit),
+	}
+	if session_order_id != "":
+		GameState.on_level_won(
+			session_order_id,
+			score_tracker.score,
+			level_state.moves_remaining,
+			level_state.move_limit
+		)
+	level_session_finished.emit(true, payload)
+
+
+func _report_loss_if_needed() -> void:
+	if _result_reported:
+		return
+	_result_reported = true
+	var payload := {
+		"order_id": session_order_id,
+		"score": score_tracker.score,
+		"progress": objective_tracker.get_progress_text(),
+	}
+	if session_order_id != "":
+		GameState.on_level_lost(session_order_id)
+	level_session_finished.emit(false, payload)
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +304,9 @@ func debug_add_moves(amount: int = 5) -> void:
 
 
 func debug_add_objective(amount: int = 5) -> void:
-	var id := objective_tracker.get_primary_piece_id()
-	objective_tracker.add_debug_progress(id, amount)
-	status_message.emit("+%d objective progress" % amount)
+	for piece_id in objective_tracker.get_tracked_piece_ids():
+		objective_tracker.add_debug_progress(piece_id, amount)
+	status_message.emit("+%d objective progress (all targets)" % amount)
 	hud_refresh_requested.emit()
 	_evaluate_end_conditions()
 

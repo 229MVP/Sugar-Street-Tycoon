@@ -6,11 +6,17 @@ config_version=5
 [application]
 
 config/name="Sugar Street Tycoon: Match & Build"
-config/description="Match-3 and business-management prototype. Phase 1: playable match-3 foundation."
-config/version="0.1.0"
-run/main_scene="res://scenes/main/main.tscn"
+config/description="Match-3 and dessert shop management prototype."
+config/version="0.2.0"
+run/main_scene="res://scenes/title/title.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
 config/icon="res://icon/icon.png"
+
+[autoload]
+
+GameState="*res://scripts/shop/game_state.gd"
+AudioManager="*res://scripts/audio/audio_manager.gd"
+SceneRouter="*res://scripts/navigation/scene_router.gd"
 
 [display]
 
