@@ -3,18 +3,21 @@ extends Control
 ## Centralized placeholder rendering for shop stage + placed decorations.
 
 
+signal slot_pressed(slot_id: String)
+
 var _bg: ColorRect
 var _trim: ColorRect
+var _header: PanelContainer
+var _name_label: Label
 var _stage_label: Label
+var _lights: Array = []
 var _slot_nodes: Dictionary = {} ## slot_id -> PanelContainer
 var _edit_mode: bool = false
 var _selected_slot: String = ""
 
-signal slot_pressed(slot_id: String)
-
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(0, 220)
+	custom_minimum_size = Vector2(0, 240)
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	clip_contents = true
 	_build()
@@ -27,22 +30,67 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	for c in get_children():
-		c.queue_free()
+	while get_child_count() > 0:
+		var child := get_child(0)
+		remove_child(child)
+		child.free()
+	_lights.clear()
+	_slot_nodes.clear()
+
 	_bg = ColorRect.new()
 	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_bg)
 
+	# Warm wall wash stripe
+	var wash := ColorRect.new()
+	wash.color = Color(1, 1, 1, 0.18)
+	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(wash)
+	wash.set_meta("role", "wash")
+
 	_trim = ColorRect.new()
 	_trim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_trim)
 
+	for i in range(3):
+		var light := PanelContainer.new()
+		light.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var lstyle := StyleBoxFlat.new()
+		lstyle.bg_color = Color("#F4BC4B")
+		lstyle.set_corner_radius_all(10)
+		lstyle.shadow_color = Color(1, 0.85, 0.4, 0.35)
+		lstyle.shadow_size = 6
+		light.add_theme_stylebox_override("panel", lstyle)
+		add_child(light)
+		_lights.append(light)
+
+	_header = PanelContainer.new()
+	_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hstyle := StyleBoxFlat.new()
+	hstyle.bg_color = Color("#FFF9F2")
+	hstyle.set_corner_radius_all(12)
+	hstyle.content_margin_left = 10
+	hstyle.content_margin_right = 10
+	hstyle.content_margin_top = 6
+	hstyle.content_margin_bottom = 6
+	hstyle.set_border_width_all(1)
+	hstyle.border_color = SugarStreetColors.SOFT_BORDER
+	_header.add_theme_stylebox_override("panel", hstyle)
+	add_child(_header)
+	var hbox := VBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 2)
+	_header.add_child(hbox)
+	_name_label = Label.new()
+	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_name_label.add_theme_font_size_override("font_size", 15)
+	_name_label.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
+	hbox.add_child(_name_label)
 	_stage_label = Label.new()
 	_stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stage_label.add_theme_font_size_override("font_size", 12)
-	_stage_label.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
-	add_child(_stage_label)
+	_stage_label.add_theme_font_size_override("font_size", 11)
+	_stage_label.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
+	hbox.add_child(_stage_label)
 
 	for slot in GameState.decor_catalog.all_slots():
 		var panel := PanelContainer.new()
@@ -68,7 +116,11 @@ func refresh() -> void:
 		return
 	var level := clampi(GameState.data.shop_level, 1, 5)
 	_apply_stage(level)
-	_stage_label.text = "Shop Stage %d · %s" % [level, GameState.data.shop_appeal_tier]
+	if _name_label:
+		_name_label.text = GameState.data.shop_name
+	_stage_label.text = "Shop Lv %d · Appeal %d · %s" % [
+		level, GameState.data.shop_appeal, GameState.data.shop_appeal_tier
+	]
 	for slot in GameState.decor_catalog.all_slots():
 		var sid := str(slot.slot_id)
 		var panel: PanelContainer = _slot_nodes.get(sid)
@@ -98,8 +150,10 @@ func _apply_stage(level: int) -> void:
 
 
 func _paint_slot(panel: PanelContainer, slot: DecorationSlotDef) -> void:
-	for c in panel.get_children():
-		c.queue_free()
+	while panel.get_child_count() > 0:
+		var child := panel.get_child(0)
+		panel.remove_child(child)
+		child.free()
 	var unlocked := DecorationManager.is_slot_unlocked(slot, GameState.data)
 	var placed_id := str(GameState.data.placed_decorations.get(str(slot.slot_id), ""))
 	var decor: DecorationData = GameState.decor_catalog.get_decoration(StringName(placed_id)) if placed_id != "" else null
@@ -138,15 +192,27 @@ func _paint_slot(panel: PanelContainer, slot: DecorationSlotDef) -> void:
 func _layout() -> void:
 	if size.x < 8 or size.y < 8:
 		return
+	for child in get_children():
+		if child is ColorRect and child.has_meta("role") and str(child.get_meta("role")) == "wash":
+			child.position = Vector2(0, size.y * 0.08)
+			child.size = Vector2(size.x, size.y * 0.55)
 	_trim.position = Vector2(0, size.y * 0.88)
 	_trim.size = Vector2(size.x, size.y * 0.12)
-	_stage_label.position = Vector2(8, 4)
-	_stage_label.size = Vector2(size.x - 16, 18)
+	if _header:
+		_header.position = Vector2(10, 8)
+		_header.size = Vector2(size.x - 20, 44)
+	for i in range(_lights.size()):
+		var light: Control = _lights[i]
+		var x := size.x * (0.22 + 0.28 * float(i))
+		light.position = Vector2(x - 7, 56)
+		light.size = Vector2(14, 14)
 	for slot in GameState.decor_catalog.all_slots():
 		var panel: PanelContainer = _slot_nodes.get(str(slot.slot_id))
 		if panel == null:
 			continue
-		panel.position = Vector2(slot.anchor_pos.x * size.x, slot.anchor_pos.y * size.y)
+		# Push slots slightly down to clear the name header.
+		var y := maxf(slot.anchor_pos.y, 0.28)
+		panel.position = Vector2(slot.anchor_pos.x * size.x, y * size.y)
 		panel.size = Vector2(maxi(44, slot.anchor_size.x * size.x), maxi(44, slot.anchor_size.y * size.y))
 
 

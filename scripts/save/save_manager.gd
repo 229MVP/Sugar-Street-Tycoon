@@ -191,7 +191,10 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	data.unlocked_decorations = _merge_dict({}, dict.get("unlocked_decorations", {}))
 	data.unlocked_recipes = _merge_dict(data.unlocked_recipes, dict.get("unlocked_recipes", {}))
 	data.equipment_levels = _merge_dict(data.equipment_levels, dict.get("equipment_levels", {}))
+	# Merge saved pantry onto starter defaults, then fill any missing keys.
+	# Never clobber valid existing quantities; only add absent ingredient IDs.
 	data.ingredients = _merge_dict(data.ingredients, dict.get("ingredients", {}))
+	data.ingredients = SaveData.ensure_ingredient_keys(data.ingredients)
 	data.best_level_stars = dict.get("best_level_stars", {}).duplicate(true) if typeof(dict.get("best_level_stars", {})) == TYPE_DICTIONARY else {}
 	data.best_level_scores = dict.get("best_level_scores", {}).duplicate(true) if typeof(dict.get("best_level_scores", {})) == TYPE_DICTIONARY else {}
 	data.best_order_stars = dict.get("best_order_stars", {}).duplicate(true) if typeof(dict.get("best_order_stars", {})) == TYPE_DICTIONARY else {}

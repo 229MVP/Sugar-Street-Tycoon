@@ -158,7 +158,7 @@ func _build_shell() -> void:
 	vbox.add_child(back)
 
 	_bottom_nav = BottomNavigation.new()
-	_bottom_nav.selected_tab = BottomNavigation.TAB_ORDERS
+	_bottom_nav.selected_tab = BottomNavigation.TAB_CUSTOMERS
 	vbox.add_child(_bottom_nav)
 
 	_confirm = ConfirmPopup.new()
