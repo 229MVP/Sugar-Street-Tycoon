@@ -195,7 +195,7 @@ func _test_migration_and_repair() -> bool:
 		"settings": {},
 	}
 	var migrated: SaveData = SaveManager._from_dict(old)
-	if migrated.coins != 777 or migrated.version != 2:
+	if migrated.coins != 777 or migrated.version != SaveData.SAVE_VERSION:
 		push_error("migration failed")
 		return false
 	if not bool(migrated.worker_unlock_flags.get("ava", false)):
@@ -222,10 +222,10 @@ func _test_migration_and_repair() -> bool:
 func _test_order_rewards_once() -> bool:
 	GS.debug_reset_orders()
 	GS.assign_worker(&"ava", WorkerData.Station.OVEN)
-	var order_id := "order_mia"
+	var order_id := "order_mia_001"
 	GS.begin_order_level(order_id)
 	GS.on_level_won(order_id, 500, 10, 20)
-	var preview: Dictionary = GS.preview_order_rewards(GS.catalog.get_order(&"order_mia"))
+	var preview: Dictionary = GS.preview_order_rewards(GS.catalog.get_order(&"order_mia_001"))
 	if int(preview.get("coins", 0)) <= 150:
 		push_error("worker/equipment bonus not in preview")
 		return false

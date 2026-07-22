@@ -23,7 +23,11 @@ enum Sfx {
 }
 
 var enabled: bool = true
+var music_enabled: bool = true
+var sfx_volume: float = 0.9
+var music_volume: float = 0.8
 var _players: Dictionary = {}
+var _music_player: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -32,6 +36,28 @@ func _ready() -> void:
 		player.name = "Sfx_%s" % str(sfx)
 		add_child(player)
 		_players[sfx] = player
+	_music_player = AudioStreamPlayer.new()
+	_music_player.name = "MusicPlayer"
+	add_child(_music_player)
+
+
+func set_sfx_volume(value: float) -> void:
+	sfx_volume = clampf(value, 0.0, 1.0)
+	var db := linear_to_db(maxf(sfx_volume, 0.0001))
+	for player in _players.values():
+		(player as AudioStreamPlayer).volume_db = db if sfx_volume > 0.0 else -80.0
+
+
+func set_music_volume(value: float) -> void:
+	music_volume = clampf(value, 0.0, 1.0)
+	if _music_player:
+		_music_player.volume_db = linear_to_db(maxf(music_volume, 0.0001)) if music_volume > 0.0 else -80.0
+
+
+func set_music_enabled(value: bool) -> void:
+	music_enabled = value
+	if _music_player and not music_enabled:
+		_music_player.stop()
 
 
 func play(sfx: Sfx) -> void:
