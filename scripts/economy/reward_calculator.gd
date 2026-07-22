@@ -1,6 +1,6 @@
 class_name RewardCalculator
 extends RefCounted
-## Order reward pipeline: base → equipment → workers → (future events) → round.
+## Order reward pipeline: base → equipment → checkout → decor appeal → workers → round.
 
 
 static func oven_bonus_percent(level: int) -> float:
@@ -19,8 +19,8 @@ static func checkout_bonus_percent(level: int) -> float:
 	return 0.01 * float(maxi(level - 1, 0))
 
 
-static func compute_order_rewards(template: OrderTemplate, data: SaveData, catalog: ContentCatalog = null) -> Dictionary:
-	## Backward compatible: catalog optional; worker bonuses apply when provided.
+static func compute_order_rewards(template: OrderTemplate, data: SaveData, catalog: ContentCatalog = null, decor_catalog: DecorationCatalog = null) -> Dictionary:
+	## Backward compatible: catalogs optional; worker/decor bonuses apply when provided.
 	var oven := int(data.equipment_levels.get("oven", 1))
 	var mixer := int(data.equipment_levels.get("mixer", 1))
 	var display := int(data.equipment_levels.get("display_case", 1))
@@ -34,6 +34,12 @@ static func compute_order_rewards(template: OrderTemplate, data: SaveData, catal
 	var eq_coins := int(round(float(base_coins) * (1.0 + oven_bonus_percent(oven)) * checkout_mult))
 	var eq_xp := int(round(float(base_xp) * (1.0 + mixer_bonus_percent(mixer)) * checkout_mult))
 	var eq_rep := int(round(float(base_rep) * (1.0 + display_bonus_percent(display)) * checkout_mult))
+
+	var appeal := int(data.shop_appeal)
+	if decor_catalog != null:
+		appeal = ShopAppealCalculator.calculate_appeal(decor_catalog, data.placed_decorations)
+	var decor_rep_pct := ShopAppealCalculator.reputation_bonus_percent(appeal)
+	var decor_rep := int(round(float(eq_rep) * (1.0 + decor_rep_pct)))
 
 	var worker_coin_pct := 0.0
 	var worker_xp_pct := 0.0
@@ -65,13 +71,9 @@ static func compute_order_rewards(template: OrderTemplate, data: SaveData, catal
 
 	var final_coins := int(round(float(eq_coins) * (1.0 + worker_coin_pct) * (1.0 + worker_all_pct)))
 	var final_xp := int(round(float(eq_xp) * (1.0 + worker_xp_pct) * (1.0 + worker_all_pct)))
-	var final_rep := int(round(float(eq_rep) * (1.0 + worker_rep_pct) * (1.0 + worker_all_pct)))
+	var final_rep := int(round(float(decor_rep) * (1.0 + worker_rep_pct) * (1.0 + worker_all_pct)))
 
 	var ingredients := template.ingredient_rewards.duplicate(true)
-	var bonus_ingredients := {}
-	if ingredient_chance > 0.0 and catalog != null:
-		# Deterministic chance roll stored for preview as chance only; actual grant on complete.
-		pass
 
 	return {
 		"coins": maxi(final_coins, 0),
@@ -81,6 +83,11 @@ static func compute_order_rewards(template: OrderTemplate, data: SaveData, catal
 		"breakdown": {
 			"base": {"coins": base_coins, "experience": base_xp, "reputation": base_rep},
 			"equipment": {"coins": eq_coins, "experience": eq_xp, "reputation": eq_rep},
+			"decoration": {
+				"appeal": appeal,
+				"reputation_percent": decor_rep_pct,
+				"reputation": decor_rep,
+			},
 			"worker": {
 				"coins": final_coins,
 				"experience": final_xp,

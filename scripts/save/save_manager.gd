@@ -89,6 +89,20 @@ static func write_corrupted_worker_data(data: SaveData) -> void:
 	save_game(data)
 
 
+static func write_corrupted_decoration_data(data: SaveData) -> void:
+	## Leaves core progress intact but breaks decoration fields for recovery tests.
+	data.owned_decorations = {"ghost_lamp": true, "wooden_starter_sign": true}
+	data.placed_decorations = {
+		"front_sign": "ghost_lamp",
+		"missing_slot": "wooden_starter_sign",
+		"plant_corner": "wooden_starter_sign",
+		"wall_right": "framed_cupcake_print",
+	}
+	data.shop_level = 99
+	data.shop_appeal = -40
+	save_game(data)
+
+
 static func _load_backup_or_default() -> SaveData:
 	if FileAccess.file_exists(BACKUP_PATH):
 		var text := FileAccess.get_file_as_string(BACKUP_PATH)
@@ -122,6 +136,12 @@ static func _to_dict(data: SaveData) -> Dictionary:
 		"reputation": data.reputation,
 		"shop_name": data.shop_name,
 		"shop_level": data.shop_level,
+		"shop_appeal": data.shop_appeal,
+		"shop_appeal_tier": data.shop_appeal_tier,
+		"decoration_save_version": data.decoration_save_version,
+		"owned_decorations": _stringify_keys(data.owned_decorations),
+		"placed_decorations": _stringify_keys(data.placed_decorations),
+		"unlocked_decorations": _stringify_keys(data.unlocked_decorations),
 		"unlocked_recipes": _stringify_keys(data.unlocked_recipes),
 		"equipment_levels": _stringify_keys(data.equipment_levels),
 		"ingredients": _stringify_keys(data.ingredients),
@@ -163,6 +183,12 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	data.reputation = maxi(0, int(dict.get("reputation", 0)))
 	data.shop_name = str(dict.get("shop_name", data.shop_name))
 	data.shop_level = maxi(1, int(dict.get("shop_level", 1)))
+	data.shop_appeal = maxi(0, int(dict.get("shop_appeal", 0)))
+	data.shop_appeal_tier = str(dict.get("shop_appeal_tier", "Plain"))
+	data.decoration_save_version = int(dict.get("decoration_save_version", 0))
+	data.owned_decorations = _merge_dict({}, dict.get("owned_decorations", {}))
+	data.placed_decorations = _merge_dict({}, dict.get("placed_decorations", {}))
+	data.unlocked_decorations = _merge_dict({}, dict.get("unlocked_decorations", {}))
 	data.unlocked_recipes = _merge_dict(data.unlocked_recipes, dict.get("unlocked_recipes", {}))
 	data.equipment_levels = _merge_dict(data.equipment_levels, dict.get("equipment_levels", {}))
 	data.ingredients = _merge_dict(data.ingredients, dict.get("ingredients", {}))
@@ -220,6 +246,26 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 					or str(oid).begins_with("order_morgan_005"):
 				cleaned.append(oid)
 		data.visible_order_ids = cleaned
+	if old_version < 4 or data.decoration_save_version < 1:
+		if OS.is_debug_build():
+			print("SaveManager: migrating save v%d → decoration system v4" % old_version)
+		# Shop level was previously derived from equipment; reset to independent progression start.
+		data.shop_level = 1
+		data.owned_decorations = {
+			"wooden_starter_sign": true,
+			"small_mint_plant": true,
+		}
+		data.unlocked_decorations = {
+			"wooden_starter_sign": true,
+			"small_mint_plant": true,
+		}
+		data.placed_decorations = {
+			"front_sign": "wooden_starter_sign",
+			"plant_corner": "small_mint_plant",
+		}
+		data.shop_appeal = 10
+		data.shop_appeal_tier = "Plain"
+		data.decoration_save_version = SaveData.DECORATION_SAVE_VERSION
 	data.apply_worker_defaults()
 
 	data.version = SaveData.SAVE_VERSION

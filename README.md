@@ -2,7 +2,7 @@
 
 Portrait **Godot 4.3** / **GDScript** bakery match-3 with a shop management vertical slice.
 
-**Core loop:** Title → Shop Hub → Orders → Match-3 (`main.tscn`) → Win/Lose → Orders / Shop → Complete Order → Rewards → Save → Next Order
+**Core loop:** Title → Shop Hub → Orders → Match-3 → Complete Order → Decor / Shop Level / Appeal → Recipes / Upgrades / Inventory
 
 Workers / locations / events / ads / IAP / Supabase / offline earnings are **not** part of this phase (Coming Soon / gated).
 
@@ -31,14 +31,13 @@ title_screen.tscn
       → recipe_book.tscn
       → upgrades_screen.tscn
       → inventory_screen.tscn
+      → decor_screen.tscn / Shop Edit Mode
 ```
 
 **Autoloads:** `GameState`, `AudioManager`, `SceneRouter`  
-**Helpers:** `NavigationManager`, `SaveManager`, `RewardCalculator`, `PlayerProgression`, `ThemeFactory`
+**Helpers:** `NavigationManager`, `SaveManager`, `RewardCalculator`, `PlayerProgression`, `ThemeFactory`, `DecorationManager`, `ShopAppealCalculator`
 
-**Shared UI:** `scenes/ui/top_resource_bar.tscn`, `scenes/ui/bottom_navigation.tscn`, theme `resources/themes/sugar_street_theme.tres` (palette via `SugarStreetColors` / `ThemeFactory`)
-
-Frontend screens build visible bakery-themed placeholder UI in script (rounded panels, cards, coral/mint/cream). Roots are full-rect Controls; content uses containers + ScrollContainer.
+**Shared UI:** `scenes/ui/top_resource_bar.tscn`, `scenes/ui/bottom_navigation.tscn`, theme `resources/themes/sugar_street_theme.tres`
 
 Main scene: `res://scenes/main/title_screen.tscn`
 
@@ -63,7 +62,7 @@ Owns runtime progression (no scene node refs):
 | `unlocked_recipes` / `equipment_levels` / `ingredients` | Progression |
 | `current_session_result` | Last puzzle result |
 | `settings` | Music/SFX/vibration/reduce motion |
-| Save version | `SaveData.SAVE_VERSION` (**3**) |
+| Save version | `SaveData.SAVE_VERSION` (**4**) |
 
 Signals include: `coins_changed`, `stars_changed`, `reputation_changed`, `experience_changed`, `player_level_changed`, `selected_order_changed`, `order_status_changed`, `save_loaded`, `save_completed`.
 
@@ -128,9 +127,120 @@ Board templates: `level_01` … `level_05` in `ContentCatalog._build_levels()`.
 1. Base reward (order template)
 2. Equipment-specific bonuses (Oven coins / Mixer XP / Display reputation: **+2% per level above 1**)
 3. Checkout Counter global bonus (**+1% per level above 1** on all)
-4. Worker bonus placeholder (0 this phase)
-5. Event bonus placeholder (0)
-6. Final rounded integers
+4. Decoration Appeal reputation bonus (**+1% per 25 Appeal, capped at +10%**)
+5. Worker bonus placeholder (0 this UI phase)
+6. Event bonus placeholder (0)
+7. Final rounded integers
+
+---
+
+## Decoration system overview
+
+Fixed-slot shop customization (no freeform drag-and-drop).
+
+**Core types**
+- `DecorationData` — catalog definition (cost, appeal, requirements, slot compatibility)
+- `DecorationSlotDef` — fixed slot (id, type, required shop level, anchors)
+- `DecorationCatalog` — 16 starter decorations + 10 slots
+- `DecorationManager` — purchase / place / remove / repair (single manager, not autoload)
+- `ShopAppealCalculator` — appeal sum, tiers, reputation bonus
+- `ShopLevelRules` — shop levels 1–5 requirements
+
+**Scenes**
+- `scenes/decor/decor_screen.tscn` — browse / buy / filter
+- Shop Hub Edit Mode via `ShopEditOverlay` + `ShopDecorVisual`
+
+### Slot system
+
+| Slot | Unlocks at shop level |
+|------|------------------------|
+| Front Sign, Wall Left, Counter Accent, Plant Corner | 1 |
+| Wall Right, Display Accent | 2 |
+| Floor Center, Window | 3 |
+| Lighting | 4 |
+| Seating | 5 |
+
+One decoration per slot. One placement per decoration. Removing keeps ownership (no refund).
+
+### Default appearance
+
+- Front Sign → Wooden Starter Sign (+5)
+- Plant Corner → Small Mint Plant (+5)
+- Starting Appeal **10** (calculated from placements)
+
+### Purchase flow
+
+Unlock check → not owned → enough coins → confirm → deduct → own → save → place available.
+
+### Placement flow
+
+Edit Shop → tap unlocked slot → choose compatible owned décor → confirm replace if needed → visual + appeal update → save.
+
+### Shop Appeal
+
+`appeal = sum(placed decoration.appeal_value)` (owned-but-unplaced does **not** count)
+
+| Tier | Appeal |
+|------|--------|
+| Plain | 0–24 |
+| Cozy | 25–59 |
+| Charming | 60–109 |
+| Popular | 110–174 |
+| Premium | 175–249 |
+| Iconic | 250+ |
+
+Reputation bonus: `min(floor(appeal / 25) * 1%, 10%)` applied in the reward pipeline after checkout.
+
+### Shop-level requirements
+
+Shop level is **independent** of player level and equipment (equipment upgrades no longer change shop level).
+
+| To level | Player Lv | Coins | Reputation | Appeal |
+|----------|-----------|-------|------------|--------|
+| 2 | 2 | 1,000 | 25 | 20 |
+| 3 | 4 | 2,500 | 75 | 55 |
+| 4 | 6 | 5,000 | 150 | 100 |
+| 5 | 8 | 10,000 | 300 | 175 |
+
+Coins are deducted. Reputation and Appeal are thresholds only.
+
+### Shop visual stages
+
+`ShopDecorVisual` changes background/trim colors and shows placeholder panels for placed décor at each shop level (1 basic → 5 luxury accents).
+
+### Save-data additions (version **4**)
+
+- `owned_decorations`, `placed_decorations`, `unlocked_decorations`
+- `shop_appeal`, `shop_appeal_tier`, `decoration_save_version`
+- Settings: `last_decor_category`, `decor_seen_unlocks`
+
+**Migration from v3:** restore starter décor ownership/placements, shop level 1, recalculate appeal. Preserves coins/stars/rep/orders/recipes/equipment/inventory.
+
+Invalid décor data is repaired on load (unknown ids, locked-slot placements, duplicates, appeal recalc).
+
+### How to add a decoration
+
+1. `_add_decor(...)` in `DecorationCatalog._build_decorations()`
+2. Set compatible slot types / category / costs / requirements
+3. Placeholder color + symbol (swap for Texture later)
+
+### How to add a slot
+
+1. `_add_slot(...)` in `DecorationCatalog._build_slots()`
+2. Set required shop level + compatible categories + anchors
+3. Optionally extend `ShopLevelRules.REQUIREMENTS` unlock lists
+
+### How to change Appeal values
+
+Edit `appeal_value` on the decoration definition; totals recalculate from placements.
+
+### How to replace placeholder art later
+
+Map `decoration_id` → Texture2D in `ShopDecorVisual._paint_slot` (and décor cards). Keep IDs stable.
+
+### Decor debug controls
+
+Shop Debug panel (debug builds): +10k coins, +500 rep, set player/shop level, unlock/own all décor, clear/auto-place, corrupt/repair/reset décor only, print décor state.
 
 ---
 
@@ -196,7 +306,7 @@ Starter: Chocolate/Strawberries/Flour/Sugar **5**, Cream/Packaging **3**, others
 
 Dev-only (`OS.is_debug_build()` + `GameState.DEBUG_TOOLS_ENABLED`): Shop Debug panel.
 
-Add coins/stars/XP/rep · complete/win/lose level · set moves · unlock recipes · max equipment (Lv3) · reset orders · print GameState/save · corrupt/reset save.
+Add coins/stars/XP/rep · décor unlock/own/place/repair tools · set shop/player level · unlock recipes · max equipment (Lv3) · reset orders · print GameState/save · corrupt/reset save.
 
 ---
 
@@ -245,6 +355,7 @@ $GODOT --headless --path . -s res://scripts/tools/headless_f5_boot_test.gd
 $GODOT --headless --path . -s res://scripts/tools/headless_nav_boot_test.gd
 $GODOT --headless --path . -s res://scripts/tools/headless_shop_loop_test.gd
 $GODOT --headless --path . -s res://scripts/tools/headless_smoke_test.gd
+$GODOT --headless --path . -s res://scripts/tools/headless_decor_test.gd
 $GODOT --headless --path . -s res://scripts/tools/headless_swap_test.gd
 $GODOT --headless --path . -s res://scripts/tools/headless_invalid_swap_test.gd
 ```
@@ -255,6 +366,8 @@ $GODOT --headless --path . -s res://scripts/tools/headless_invalid_swap_test.gd
 
 - Final Figma bitmaps not imported (styled placeholders).
 - Match-3 boosters are visual-only (disabled).
-- Workers / Locations / Events / Decor / Sign-in gated as Coming Soon.
+- Workers / Locations / Events gated as Coming Soon.
 - Worker/passive backend code may exist from earlier branches but is not exposed in this UI phase.
 - Ingredients are not consumed when fulfilling recipes yet.
+- Decoration uses fixed slots only (no freeform furniture placement).
+- Display Accent / Window slots accept a few related categories so the 16 starter items remain placeable.

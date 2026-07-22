@@ -86,7 +86,8 @@ func show_order(order: OrderTemplate, status: int) -> void:
 	for ing_id in order.ingredient_rewards.keys():
 		ingredient_lines.append("%s x%d" % [str(ing_id).capitalize(), int(order.ingredient_rewards[ing_id])])
 	var ingredients_text := ", ".join(ingredient_lines) if not ingredient_lines.is_empty() else "None"
-	_body.text = "“%s”\n\nRecipe: %s\nObjective: %s\nMoves: %d\nDifficulty: %s\n\nRewards:\nCoins: %s\nXP: %d\nReputation: %d\nIngredients: %s\n\nStatus: %s" % [
+	var decor_pct := float(rewards.get("breakdown", {}).get("decoration", {}).get("reputation_percent", 0.0))
+	_body.text = "“%s”\n\nRecipe: %s\nObjective: %s\nMoves: %d\nDifficulty: %s\n\nRewards:\nCoins: %s\nXP: %d\nReputation: %d (+%d%% décor appeal)\nIngredients: %s\n\nStatus: %s" % [
 		message,
 		recipe.display_name if recipe else str(order.recipe_id),
 		order.objective_text(),
@@ -95,6 +96,7 @@ func show_order(order: OrderTemplate, status: int) -> void:
 		RewardCalculator.format_coins(int(rewards.get("coins", order.coin_reward))),
 		int(rewards.get("experience", order.experience_reward)),
 		int(rewards.get("reputation", order.reputation_reward)),
+		int(round(decor_pct * 100.0)),
 		ingredients_text,
 		_status_name(status),
 	]
