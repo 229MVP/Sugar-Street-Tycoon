@@ -14,6 +14,9 @@ func setup(order: OrderTemplate, status: int) -> void:
 	order_id = str(order.order_id)
 	for c in get_children():
 		c.queue_free()
+	modulate.a = 1.0
+	custom_minimum_size = Vector2(0, 180)
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var style := ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 16)
 	if status == SaveData.OrderStatus.READY_TO_COMPLETE:
@@ -37,15 +40,17 @@ func setup(order: OrderTemplate, status: int) -> void:
 	header.add_theme_constant_override("separation", 10)
 	root.add_child(header)
 
-	var portrait := ColorRect.new()
+	var portrait := PanelContainer.new()
 	portrait.custom_minimum_size = Vector2(52, 52)
-	portrait.color = order.customer_color if status != SaveData.OrderStatus.LOCKED else order.customer_color.darkened(0.35)
+	var pstyle := StyleBoxFlat.new()
+	pstyle.bg_color = order.customer_color if status != SaveData.OrderStatus.LOCKED else order.customer_color.darkened(0.35)
+	pstyle.set_corner_radius_all(26)
+	portrait.add_theme_stylebox_override("panel", pstyle)
 	header.add_child(portrait)
 	var portrait_label := Label.new()
 	portrait_label.text = order.customer_name.substr(0, 1)
 	portrait_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	portrait_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	portrait_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	portrait_label.add_theme_color_override("font_color", SugarStreetColors.WHITE)
 	portrait_label.add_theme_font_size_override("font_size", 22)
 	portrait.add_child(portrait_label)
@@ -59,7 +64,7 @@ func setup(order: OrderTemplate, status: int) -> void:
 	name_l.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
 	info.add_child(name_l)
 	var msg := Label.new()
-	msg.text = "“%s”" % (order.customer_message if order.customer_message != "" else "Please help with my order!")
+	msg.text = '"%s"' % (order.customer_message if order.customer_message != "" else "Please help with my order!")
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	msg.add_theme_font_size_override("font_size", 12)
 	msg.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
@@ -77,7 +82,6 @@ func setup(order: OrderTemplate, status: int) -> void:
 	])
 	_row(root, "Difficulty", order.difficulty_label())
 	_row(root, "Status", _status_name(status))
-
 	if status == SaveData.OrderStatus.LOCKED:
 		_row(root, "Unlock", order.unlock_requirement_text())
 
@@ -88,13 +92,7 @@ func setup(order: OrderTemplate, status: int) -> void:
 	var details := Button.new()
 	details.text = "Details"
 	details.custom_minimum_size = Vector2(90, 44)
-	ThemeFactory.apply_button_styles(details, {
-		"normal": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH, 14),
-		"hover": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH.lightened(0.08), 14),
-		"pressed": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH.darkened(0.08), 14),
-		"disabled": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 14),
-		"focus": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH, 14, true),
-	}, SugarStreetColors.DARK_TEXT)
+	ThemeFactory.apply_button_styles(details, ThemeFactory.soft_button_styles(), SugarStreetColors.DARK_TEXT)
 	details.pressed.connect(func(): details_pressed.emit(order_id))
 	actions.add_child(details)
 
@@ -115,22 +113,18 @@ func setup(order: OrderTemplate, status: int) -> void:
 			action.disabled = true
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
 		SaveData.OrderStatus.FAILED:
-			action.text = "Retry Order"
+			action.text = "Retry"
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-			action.pressed.connect(func(): start_pressed.emit(order_id))
+			action.pressed.connect(func(): details_pressed.emit(order_id))
 		SaveData.OrderStatus.SELECTED, SaveData.OrderStatus.LEVEL_IN_PROGRESS:
-			action.text = "Continue Order"
+			action.text = "Continue"
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-			action.pressed.connect(func(): start_pressed.emit(order_id))
+			action.pressed.connect(func(): details_pressed.emit(order_id))
 		_:
 			action.text = "Start Order"
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-			action.pressed.connect(func(): start_pressed.emit(order_id))
+			action.pressed.connect(func(): details_pressed.emit(order_id))
 	actions.add_child(action)
-
-	modulate.a = 0.0
-	var tween := create_tween()
-	tween.tween_property(self, "modulate:a", 1.0, 0.2)
 
 
 func _status_name(status: int) -> String:

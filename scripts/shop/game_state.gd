@@ -63,7 +63,8 @@ func has_save() -> bool:
 
 
 func has_valid_save() -> bool:
-	if not SaveManager.has_save():
+	## Continue stays disabled when only a corrupt primary exists with no backup.
+	if not SaveManager.has_valid_save_file():
 		return false
 	var loaded := SaveManager.load_game()
 	return loaded != null and loaded.player_level >= 1

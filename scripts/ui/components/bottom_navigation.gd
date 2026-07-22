@@ -1,13 +1,16 @@
 class_name BottomNavigation
 extends Control
-## Shared bottom tabs: Shop, Inventory, Customers, Events.
+## Shared bottom tabs: Shop, Orders, Recipes, Inventory.
 
 
 signal tab_selected(tab_id: String)
 
 const TAB_SHOP := "shop"
+const TAB_ORDERS := "orders"
+const TAB_RECIPES := "recipes"
 const TAB_INVENTORY := "inventory"
-const TAB_CUSTOMERS := "customers"
+## Legacy aliases used by older screens.
+const TAB_CUSTOMERS := TAB_ORDERS
 const TAB_EVENTS := "events"
 
 var _buttons: Dictionary = {}
@@ -17,6 +20,7 @@ var selected_tab: String = TAB_SHOP
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(0, 64)
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_build()
 	set_selected(selected_tab)
 	_refresh_badges()
@@ -27,8 +31,11 @@ func _ready() -> void:
 
 
 func _build() -> void:
+	for c in get_children():
+		c.queue_free()
 	var panel := PanelContainer.new()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var style := ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18)
 	style.content_margin_top = 6
 	style.content_margin_bottom = 6
@@ -37,24 +44,24 @@ func _build() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	panel.add_child(row)
-	_add_tab(row, TAB_SHOP, "Shop", "🏠")
-	_add_tab(row, TAB_INVENTORY, "Inventory", "🎒")
-	_add_tab(row, TAB_CUSTOMERS, "Customers", "👥")
-	_add_tab(row, TAB_EVENTS, "Events", "🎉")
+	_add_tab(row, TAB_SHOP, "Shop")
+	_add_tab(row, TAB_ORDERS, "Orders")
+	_add_tab(row, TAB_RECIPES, "Recipes")
+	_add_tab(row, TAB_INVENTORY, "Inventory")
 
 
-func _add_tab(parent: HBoxContainer, id: String, label: String, icon: String) -> void:
+func _add_tab(parent: HBoxContainer, id: String, label: String) -> void:
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.custom_minimum_size = Vector2(44, 52)
-	btn.text = "%s\n%s" % [icon, label]
-	btn.add_theme_font_size_override("font_size", 12)
+	btn.text = label
+	btn.add_theme_font_size_override("font_size", 13)
 	btn.pressed.connect(func(): _on_tab(id))
 	parent.add_child(btn)
 	_buttons[id] = btn
 	var badge := NotificationBadgeView.new()
 	btn.add_child(badge)
-	badge.position = Vector2(52, 2)
+	badge.position = Vector2(4, 2)
 	_badges[id] = badge
 
 
@@ -65,33 +72,22 @@ func set_selected(tab_id: String) -> void:
 		if id == tab_id:
 			ThemeFactory.apply_button_styles(btn, ThemeFactory.primary_button_styles(), SugarStreetColors.WHITE)
 		else:
-			ThemeFactory.apply_button_styles(btn, {
-				"normal": ThemeFactory._btn(SugarStreetColors.WARM_CREAM, 14),
-				"hover": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH, 14),
-				"pressed": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH.darkened(0.05), 14),
-				"disabled": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 14),
-				"focus": ThemeFactory._btn(SugarStreetColors.WARM_CREAM, 14, true),
-			}, SugarStreetColors.DARK_TEXT)
+			ThemeFactory.apply_button_styles(btn, ThemeFactory.soft_button_styles(), SugarStreetColors.DARK_TEXT)
 
 
 func _on_tab(tab_id: String) -> void:
 	UiMotion.press_scale(_buttons[tab_id])
+	set_selected(tab_id)
+	tab_selected.emit(tab_id)
 	match tab_id:
 		TAB_SHOP:
-			set_selected(tab_id)
-			tab_selected.emit(tab_id)
 			SceneRouter.go_shop()
-		TAB_INVENTORY:
-			set_selected(tab_id)
-			tab_selected.emit(tab_id)
-			SceneRouter.go_inventory()
-		TAB_CUSTOMERS:
-			set_selected(tab_id)
-			tab_selected.emit(tab_id)
+		TAB_ORDERS, TAB_CUSTOMERS:
 			SceneRouter.go_orders()
-		TAB_EVENTS:
-			tab_selected.emit(tab_id)
-			# Coming Soon — emit only; parent may show popup.
+		TAB_RECIPES:
+			SceneRouter.go_recipe_book()
+		TAB_INVENTORY:
+			SceneRouter.go_inventory()
 
 
 func _refresh_badges() -> void:
@@ -103,7 +99,9 @@ func _refresh_badges() -> void:
 			ready += 1
 		elif st in [SaveData.OrderStatus.AVAILABLE, SaveData.OrderStatus.FAILED, SaveData.OrderStatus.SELECTED]:
 			available += 1
-	if _badges.has(TAB_CUSTOMERS):
-		_badges[TAB_CUSTOMERS].set_count(ready if ready > 0 else available)
+	if _badges.has(TAB_ORDERS):
+		_badges[TAB_ORDERS].set_count(ready if ready > 0 else available)
+	if _badges.has(TAB_RECIPES):
+		_badges[TAB_RECIPES].set_count(GameState.recipe_unlock_available_count())
 	if _badges.has(TAB_SHOP):
-		_badges[TAB_SHOP].set_count(GameState.recipe_unlock_available_count() + GameState.affordable_upgrade_count())
+		_badges[TAB_SHOP].set_count(GameState.affordable_upgrade_count())

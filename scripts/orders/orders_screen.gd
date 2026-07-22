@@ -2,12 +2,17 @@ extends Control
 ## Today’s Orders screen with scrollable customer cards.
 
 
+const SettingsPopupScene := preload("res://scripts/ui/settings_popup.gd")
+
 var _list: VBoxContainer
 var _confirm: ConfirmPopup
 var _order_detail: OrderDetailPopup
 var _reward_popup: RewardPopup
+var _level_up: LevelUpPopup
+var _settings: Control
 var _top_bar: TopResourceBar
 var _bottom_nav: BottomNavigation
+var _empty_label: Label
 
 
 func _ready() -> void:
@@ -34,7 +39,7 @@ func _build() -> void:
 	safe.add_theme_constant_override("margin_left", 12)
 	safe.add_theme_constant_override("margin_right", 12)
 	safe.add_theme_constant_override("margin_top", 10)
-	safe.add_theme_constant_override("margin_bottom", 10)
+	safe.add_theme_constant_override("margin_bottom", 8)
 	add_child(safe)
 
 	var vbox := VBoxContainer.new()
@@ -43,21 +48,13 @@ func _build() -> void:
 
 	_top_bar = TopResourceBar.new()
 	vbox.add_child(_top_bar)
-	_top_bar.menu_pressed.connect(func(): _coming_soon("Menu"))
+	_top_bar.menu_pressed.connect(_on_settings)
 
-	var title_row := HBoxContainer.new()
-	vbox.add_child(title_row)
 	var title := Label.new()
-	title.text = "Today’s Orders"
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.text = "Customer Orders"
 	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
-	title_row.add_child(title)
-	var timer := Label.new()
-	timer.text = "⏱ 4h 12m"
-	timer.add_theme_font_size_override("font_size", 13)
-	timer.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
-	title_row.add_child(timer)
+	vbox.add_child(title)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -68,29 +65,22 @@ func _build() -> void:
 	_list.add_theme_constant_override("separation", 10)
 	scroll.add_child(_list)
 
-	var chest := PanelContainer.new()
-	chest.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 14))
-	vbox.add_child(chest)
-	var chest_box := VBoxContainer.new()
-	chest.add_child(chest_box)
-	var chest_label := Label.new()
-	chest_label.text = "🎁 Bonus Chest  ·  1 / 3 orders"
-	chest_label.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
-	chest_box.add_child(chest_label)
-	var bar := ProgressBar.new()
-	bar.min_value = 0
-	bar.max_value = 3
-	bar.value = mini(float(GameState.data.completed_order_ids.size()), 3.0)
-	bar.custom_minimum_size = Vector2(0, 14)
-	chest_box.add_child(bar)
+	_empty_label = Label.new()
+	_empty_label.text = "No orders available"
+	_empty_label.visible = false
+	_empty_label.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
+	vbox.add_child(_empty_label)
+
+	var back := Button.new()
+	back.text = "Back to Shop"
+	back.custom_minimum_size = Vector2(0, 44)
+	ThemeFactory.apply_button_styles(back, ThemeFactory.secondary_button_styles())
+	back.pressed.connect(func(): SceneRouter.go_shop())
+	vbox.add_child(back)
 
 	_bottom_nav = BottomNavigation.new()
-	_bottom_nav.selected_tab = BottomNavigation.TAB_CUSTOMERS
+	_bottom_nav.selected_tab = BottomNavigation.TAB_ORDERS
 	vbox.add_child(_bottom_nav)
-	_bottom_nav.tab_selected.connect(func(tab):
-		if tab == BottomNavigation.TAB_EVENTS:
-			_coming_soon("Events")
-	)
 
 	_confirm = ConfirmPopup.new()
 	add_child(_confirm)
@@ -98,9 +88,14 @@ func _build() -> void:
 	add_child(_order_detail)
 	_reward_popup = RewardPopup.new()
 	add_child(_reward_popup)
+	_level_up = LevelUpPopup.new()
+	add_child(_level_up)
+	_settings = SettingsPopupScene.new()
+	add_child(_settings)
 	_order_detail.start_pressed.connect(_start_order)
 	_order_detail.complete_pressed.connect(_complete_order)
-	_reward_popup.continue_pressed.connect(_rebuild)
+	_reward_popup.continue_pressed.connect(_after_reward)
+	_level_up.continue_pressed.connect(_show_pending_level_ups)
 
 
 func _rebuild() -> void:
@@ -108,13 +103,18 @@ func _rebuild() -> void:
 		return
 	for c in _list.get_children():
 		c.queue_free()
-	for order in GameState.get_orders_for_screen():
+	var orders := GameState.get_orders_for_screen()
+	_empty_label.visible = orders.is_empty()
+	if orders.is_empty() and OS.is_debug_build():
+		push_warning("OrdersScreen: no orders available to display")
+	for order in orders:
 		var card := CustomerOrderCard.new()
 		_list.add_child(card)
 		card.setup(order, GameState.get_order_status(str(order.order_id)))
-		card.start_pressed.connect(_start_order)
-		card.complete_pressed.connect(_complete_order)
 		card.details_pressed.connect(_open_details)
+		card.complete_pressed.connect(_complete_order)
+		# Start/Continue/Retry always open details first.
+		card.start_pressed.connect(_open_details)
 
 
 func _open_details(order_id: String) -> void:
@@ -137,6 +137,8 @@ func _complete_order(order_id: String) -> void:
 	AudioManager.play_button()
 	var rewards := GameState.complete_order(order_id)
 	if rewards.is_empty():
+		if OS.is_debug_build():
+			push_warning("OrdersScreen: complete_order returned empty for %s" % order_id)
 		return
 	AudioManager.play(AudioManager.Sfx.ORDER_COMPLETED)
 	AudioManager.play(AudioManager.Sfx.COINS)
@@ -144,5 +146,20 @@ func _complete_order(order_id: String) -> void:
 	_rebuild()
 
 
-func _coming_soon(feature: String) -> void:
-	_confirm.show_confirm("Coming Soon", "%s unlocks later." % feature, "OK", "Close")
+func _after_reward() -> void:
+	_rebuild()
+	_show_pending_level_ups()
+
+
+func _show_pending_level_ups() -> void:
+	var ups := GameState.consume_pending_level_ups()
+	if ups.is_empty():
+		return
+	var first: Dictionary = ups[0]
+	for i in range(1, ups.size()):
+		GameState.pending_level_ups.append(ups[i])
+	_level_up.show_level_up(int(first.get("new_level", 1)), int(first.get("coin_reward", 0)), "New recipes may now be available.")
+
+
+func _on_settings() -> void:
+	_settings.call("show_settings")
