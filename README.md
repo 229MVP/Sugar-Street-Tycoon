@@ -36,6 +36,10 @@ title_screen.tscn
 **Autoloads:** `GameState`, `AudioManager`, `SceneRouter`  
 **Helpers:** `NavigationManager`, `SaveManager`, `RewardCalculator`, `PlayerProgression`, `ThemeFactory`
 
+**Shared UI:** `scenes/ui/top_resource_bar.tscn`, `scenes/ui/bottom_navigation.tscn`, theme `resources/themes/sugar_street_theme.tres` (palette via `SugarStreetColors` / `ThemeFactory`)
+
+Frontend screens build visible bakery-themed placeholder UI in script (rounded panels, cards, coral/mint/cream). Roots are full-rect Controls; content uses containers + ScrollContainer.
+
 Main scene: `res://scenes/main/title_screen.tscn`
 
 ---

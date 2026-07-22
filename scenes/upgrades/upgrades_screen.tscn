@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://upgrades_screen_scene"]
+[gd_scene load_steps=3 format=3 uid="uid://upgrades_screen_scene"]
 
 [ext_resource type="Script" path="res://scripts/upgrades/upgrades_screen.gd" id="1_script"]
+[ext_resource type="Theme" uid="uid://c8sugar_theme01" path="res://resources/themes/sugar_street_theme.tres" id="2_theme"]
 
 [node name="UpgradesScreen" type="Control"]
 layout_mode = 3
@@ -9,87 +10,5 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("2_theme")
 script = ExtResource("1_script")
-
-[node name="Background" type="ColorRect" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-color = Color(0.95, 0.93, 0.96, 1)
-
-[node name="Margin" type="MarginContainer" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="VBox" type="VBoxContainer" parent="Margin"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Header" type="HBoxContainer" parent="Margin/VBox"]
-layout_mode = 2
-
-[node name="Title" type="Label" parent="Margin/VBox/Header"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 26
-text = "Upgrade Shop"
-
-[node name="CoinsLabel" type="Label" parent="Margin/VBox/Header"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Coins: 0"
-
-[node name="BackButton" type="Button" parent="Margin/VBox/Header"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Back"
-
-[node name="Split" type="HBoxContainer" parent="Margin/VBox"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="Scroll" type="ScrollContainer" parent="Margin/VBox/Split"]
-custom_minimum_size = Vector2(220, 0)
-layout_mode = 2
-
-[node name="List" type="VBoxContainer" parent="Margin/VBox/Split/Scroll"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="DetailCol" type="VBoxContainer" parent="Margin/VBox/Split"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="DetailLabel" type="Label" parent="Margin/VBox/Split/DetailCol"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_vertical = 3
-autowrap_mode = 3
-text = "Select equipment"
-
-[node name="FeedbackLabel" type="Label" parent="Margin/VBox/Split/DetailCol"]
-unique_name_in_owner = true
-layout_mode = 2
-autowrap_mode = 3
-
-[node name="UpgradeButton" type="Button" parent="Margin/VBox/Split/DetailCol"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-text = "Upgrade"
-
-[node name="ConfirmHost" type="Control" parent="."]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-mouse_filter = 2

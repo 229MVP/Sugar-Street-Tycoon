@@ -25,7 +25,8 @@ func _ready() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	_panel = PanelContainer.new()
-	_panel.custom_minimum_size = Vector2(340, 360)
+	_panel.custom_minimum_size = Vector2(340, 420)
+	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
 	center.add_child(_panel)
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 18)
@@ -39,14 +40,17 @@ func _ready() -> void:
 	_title = Label.new()
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", 24)
+	_title.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
 	vbox.add_child(_title)
 	_body = Label.new()
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body.add_theme_font_size_override("font_size", 16)
+	_body.add_theme_font_size_override("font_size", 15)
+	_body.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
 	vbox.add_child(_body)
 	_start = Button.new()
 	_start.text = "Start Order"
 	_start.custom_minimum_size = Vector2(0, 48)
+	ThemeFactory.apply_button_styles(_start, ThemeFactory.primary_button_styles())
 	_start.pressed.connect(func():
 		hide_popup()
 		start_pressed.emit(_order_id)
@@ -55,6 +59,7 @@ func _ready() -> void:
 	_complete = Button.new()
 	_complete.text = "Complete Order"
 	_complete.custom_minimum_size = Vector2(0, 48)
+	ThemeFactory.apply_button_styles(_complete, ThemeFactory.primary_button_styles())
 	_complete.pressed.connect(func():
 		hide_popup()
 		complete_pressed.emit(_order_id)
@@ -63,6 +68,7 @@ func _ready() -> void:
 	_cancel = Button.new()
 	_cancel.text = "Cancel"
 	_cancel.custom_minimum_size = Vector2(0, 44)
+	ThemeFactory.apply_button_styles(_cancel, ThemeFactory.secondary_button_styles())
 	_cancel.pressed.connect(func():
 		hide_popup()
 		cancelled.emit()
