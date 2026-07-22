@@ -23,23 +23,32 @@ signal level_up(new_level: int, coin_reward: int)
 signal notifications_changed
 signal save_loaded
 signal save_completed
+signal decoration_purchased(decoration_id: StringName)
+signal decoration_placed(slot_id: StringName, decoration_id: StringName)
+signal decoration_removed(slot_id: StringName, decoration_id: StringName)
+signal shop_level_upgraded(new_level: int)
+signal appeal_changed(appeal: int, tier: String)
 
 ## True in editor / debug builds only. Production exports hide debug panels.
 const DEBUG_TOOLS_ENABLED := true
 
 var catalog := ContentCatalog.new()
+var decor_catalog := DecorationCatalog.new()
 var data: SaveData
 var pending_level_ups: Array[Dictionary] = []
 var last_completion_rewards: Dictionary = {}
 var last_offline_payload: Dictionary = {}
 var current_session_result: Dictionary = {}
 var _busy: bool = false
+var _purchase_lock: bool = false
 var _rng := RandomNumberGenerator.new()
+var _previous_appeal_tier: String = "Plain"
 
 
 func _ready() -> void:
 	_rng.randomize()
 	catalog.build()
+	decor_catalog.build()
 	if SaveManager.has_save():
 		data = SaveManager.load_game()
 	else:
@@ -53,6 +62,11 @@ func _ready() -> void:
 func _post_load_setup() -> void:
 	data.apply_worker_defaults()
 	WorkerManager.repair_assignments(catalog, data)
+	var decor_logs := DecorationManager.repair(decor_catalog, data)
+	if OS.is_debug_build() and not decor_logs.is_empty():
+		for msg in decor_logs:
+			print("DecorationManager repair: ", msg)
+	_previous_appeal_tier = str(data.shop_appeal_tier)
 	_ensure_order_board()
 	# Passive/offline systems remain in code for migration but are not exposed this phase.
 	OfflineEarningsCalculator.mark_session_active(data)
@@ -418,7 +432,7 @@ func complete_order(order_id: String) -> Dictionary:
 		return {}
 
 	_busy = true
-	var rewards := RewardCalculator.compute_order_rewards(order, data, catalog)
+	var rewards := RewardCalculator.compute_order_rewards(order, data, catalog, decor_catalog)
 	var result: Dictionary = data.order_level_results.get(order_id, {})
 	var stars_earned := int(result.get("stars", 1))
 	var level_id := order.level_id
@@ -528,17 +542,169 @@ func upgrade_equipment(equipment_id: StringName) -> Dictionary:
 	var cost: int = int(check["cost"])
 	data.coins = maxi(0, data.coins - cost)
 	data.equipment_levels[str(equipment_id)] = next_level
-	# Shop level = average equipment tier (simple progression signal).
-	var total := 0
-	for id in data.equipment_levels.keys():
-		total += int(data.equipment_levels[id])
-	data.shop_level = maxi(1, int(round(float(total) / float(maxi(data.equipment_levels.size(), 1)))))
+	# Shop level is an independent progression track (decoration system).
 	save_now()
 	coins_changed.emit(data.coins)
 	equipment_upgraded.emit(equipment_id, next_level)
 	notifications_changed.emit()
 	state_changed.emit()
 	return {"ok": true, "reason": "", "new_level": next_level}
+
+
+# ---------------------------------------------------------------------------
+# Decorations / Shop Appeal / Shop Level
+# ---------------------------------------------------------------------------
+
+func get_decoration(decoration_id: StringName) -> DecorationData:
+	return decor_catalog.get_decoration(decoration_id)
+
+
+func get_decoration_slot(slot_id: StringName) -> DecorationSlotDef:
+	return decor_catalog.get_slot(slot_id)
+
+
+func is_decoration_owned(decoration_id: StringName) -> bool:
+	return DecorationManager.is_owned(data, str(decoration_id))
+
+
+func get_shop_appeal() -> int:
+	return ShopAppealCalculator.calculate_appeal(decor_catalog, data.placed_decorations)
+
+
+func get_appeal_summary() -> Dictionary:
+	return ShopAppealCalculator.summarize(decor_catalog, data)
+
+
+func can_purchase_decoration(decoration_id: StringName) -> Dictionary:
+	return DecorationManager.can_purchase(decor_catalog.get_decoration(decoration_id), data)
+
+
+func purchase_decoration(decoration_id: StringName) -> Dictionary:
+	if _busy or _purchase_lock:
+		return {"ok": false, "reason": "Busy."}
+	_purchase_lock = true
+	var result := DecorationManager.purchase(decor_catalog.get_decoration(decoration_id), data)
+	_purchase_lock = false
+	if not result.get("ok", false):
+		return result
+	_sync_appeal(false)
+	save_now()
+	coins_changed.emit(data.coins)
+	decoration_purchased.emit(decoration_id)
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func can_place_decoration(decoration_id: StringName, slot_id: StringName) -> Dictionary:
+	return DecorationManager.can_place(
+		decor_catalog.get_decoration(decoration_id),
+		decor_catalog.get_slot(slot_id),
+		data
+	)
+
+
+func place_decoration(decoration_id: StringName, slot_id: StringName, replace_existing: bool = false) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var result := DecorationManager.place(
+		decor_catalog.get_decoration(decoration_id),
+		decor_catalog.get_slot(slot_id),
+		data,
+		replace_existing
+	)
+	if not result.get("ok", false):
+		return result
+	var prev_tier := _previous_appeal_tier
+	_sync_appeal(true)
+	save_now()
+	decoration_placed.emit(slot_id, decoration_id)
+	if _previous_appeal_tier != prev_tier:
+		AudioManager.play(AudioManager.Sfx.APPEAL_TIER_UP)
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func remove_decoration_from_slot(slot_id: StringName) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var result := DecorationManager.remove_from_slot(str(slot_id), data)
+	if not result.get("ok", false):
+		return result
+	_sync_appeal(true)
+	save_now()
+	decoration_removed.emit(slot_id, StringName(str(result.get("decoration_id", ""))))
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func can_upgrade_shop_level() -> Dictionary:
+	return ShopLevelRules.can_upgrade(data, get_shop_appeal())
+
+
+func upgrade_shop_level() -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var check := can_upgrade_shop_level()
+	if not check.get("ok", false):
+		return check
+	var cost: int = int(check.get("cost", 0))
+	var next_level: int = int(check.get("next_level", data.shop_level + 1))
+	data.coins = maxi(0, data.coins - cost)
+	data.shop_level = next_level
+	var newly := DecorationManager.refresh_unlocks(decor_catalog, data)
+	_sync_appeal(false)
+	save_now()
+	coins_changed.emit(data.coins)
+	shop_level_upgraded.emit(next_level)
+	notifications_changed.emit()
+	state_changed.emit()
+	return {
+		"ok": true,
+		"reason": "",
+		"new_level": next_level,
+		"new_unlocks": newly,
+		"new_slots": check.get("requirements", {}).get("slots", []),
+	}
+
+
+func decoration_notification_priority() -> Dictionary:
+	## Highest-priority badge for Decor button.
+	if can_upgrade_shop_level().get("ok", false):
+		return {"count": 1, "kind": "shop_upgrade"}
+	var empty_slots := DecorationManager.empty_unlocked_slot_count(decor_catalog, data)
+	if empty_slots > 0:
+		return {"count": empty_slots, "kind": "empty_slot"}
+	var affordable := DecorationManager.affordable_count(decor_catalog, data)
+	if affordable > 0:
+		return {"count": affordable, "kind": "affordable"}
+	var newly := DecorationManager.newly_unlocked_count(decor_catalog, data)
+	if newly > 0:
+		return {"count": newly, "kind": "unlocked"}
+	return {"count": 0, "kind": ""}
+
+
+func mark_decoration_unlocks_seen() -> void:
+	if typeof(data.settings.get("decor_seen_unlocks", null)) != TYPE_DICTIONARY:
+		data.settings["decor_seen_unlocks"] = {}
+	var seen: Dictionary = data.settings["decor_seen_unlocks"]
+	for decor in decor_catalog.all_decorations():
+		var id := str(decor.decoration_id)
+		if bool(data.unlocked_decorations.get(id, false)):
+			seen[id] = true
+	data.settings["decor_seen_unlocks"] = seen
+	notifications_changed.emit()
+
+
+func _sync_appeal(emit_signal_if_changed: bool = true) -> void:
+	var prev := int(data.shop_appeal)
+	var prev_tier := str(data.shop_appeal_tier)
+	var appeal := DecorationManager.recalculate_appeal(decor_catalog, data)
+	_previous_appeal_tier = str(data.shop_appeal_tier)
+	if emit_signal_if_changed and (appeal != prev or data.shop_appeal_tier != prev_tier):
+		appeal_changed.emit(appeal, data.shop_appeal_tier)
 
 
 # ---------------------------------------------------------------------------
@@ -623,7 +789,7 @@ func get_assigned_worker_count() -> int:
 
 
 func preview_order_rewards(order: OrderTemplate) -> Dictionary:
-	return RewardCalculator.compute_order_rewards(order, data, catalog)
+	return RewardCalculator.compute_order_rewards(order, data, catalog, decor_catalog)
 
 
 func worker_hire_available_count() -> int:
@@ -768,7 +934,6 @@ func debug_reset_orders() -> void:
 func debug_max_equipment() -> void:
 	for id in catalog.equipment.keys():
 		data.equipment_levels[str(id)] = 3
-	data.shop_level = 3
 	save_now()
 	state_changed.emit()
 
@@ -780,6 +945,11 @@ func debug_print_gamestate() -> void:
 		"coins": data.coins,
 		"stars": data.stars,
 		"reputation": data.reputation,
+		"shop_level": data.shop_level,
+		"shop_appeal": data.shop_appeal,
+		"shop_appeal_tier": data.shop_appeal_tier,
+		"owned_decorations": data.owned_decorations,
+		"placed_decorations": data.placed_decorations,
 		"active_order_id": data.active_order_id,
 		"visible_order_ids": data.visible_order_ids,
 		"order_statuses": data.order_statuses,
@@ -916,6 +1086,106 @@ func debug_reset_workers_only() -> void:
 	data.worker_unlock_flags = {"ava": true}
 	data.stored_passive_coins = 0.0
 	save_now()
+	state_changed.emit()
+
+
+func resync_appeal() -> void:
+	_sync_appeal(true)
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_set_player_level(level: int) -> void:
+	data.player_level = clampi(level, 1, 99)
+	save_now()
+	player_level_changed.emit(data.player_level)
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_unlock_all_decorations() -> void:
+	for decor in decor_catalog.all_decorations():
+		data.unlocked_decorations[str(decor.decoration_id)] = true
+	save_now()
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_own_all_decorations() -> void:
+	debug_add_coins(50000)
+	for decor in decor_catalog.all_decorations():
+		data.owned_decorations[str(decor.decoration_id)] = true
+		data.unlocked_decorations[str(decor.decoration_id)] = true
+	save_now()
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_clear_decoration_placements() -> void:
+	data.placed_decorations.clear()
+	_sync_appeal(true)
+	save_now()
+	state_changed.emit()
+
+
+func debug_auto_place_highest_appeal() -> void:
+	DecorationManager.auto_place_highest_appeal(decor_catalog, data)
+	_sync_appeal(true)
+	save_now()
+	state_changed.emit()
+
+
+func debug_set_shop_level(level: int) -> void:
+	data.shop_level = clampi(level, 1, ShopLevelRules.MAX_SHOP_LEVEL)
+	DecorationManager.refresh_unlocks(decor_catalog, data)
+	var logs := DecorationManager.repair(decor_catalog, data)
+	if OS.is_debug_build():
+		for msg in logs:
+			print("debug_set_shop_level repair: ", msg)
+	save_now()
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_print_decorations() -> void:
+	print(JSON.stringify({
+		"owned": data.owned_decorations,
+		"placed": data.placed_decorations,
+		"appeal": get_appeal_summary(),
+		"shop_level": data.shop_level,
+	}, "\t"))
+
+
+func debug_corrupt_decoration_save() -> void:
+	SaveManager.write_corrupted_decoration_data(data)
+	data = SaveManager.load_game()
+	_post_load_setup()
+	save_loaded.emit()
+	state_changed.emit()
+
+
+func debug_test_decoration_repair() -> void:
+	debug_corrupt_decoration_save()
+	var logs := DecorationManager.repair(decor_catalog, data)
+	print("decoration repair logs: ", logs)
+	save_now()
+	state_changed.emit()
+
+
+func debug_reset_decorations_only() -> void:
+	data.owned_decorations = {
+		"wooden_starter_sign": true,
+		"small_mint_plant": true,
+	}
+	data.unlocked_decorations = data.owned_decorations.duplicate(true)
+	data.placed_decorations = {
+		"front_sign": "wooden_starter_sign",
+		"plant_corner": "small_mint_plant",
+	}
+	data.shop_level = 1
+	_sync_appeal(true)
+	save_now()
+	notifications_changed.emit()
 	state_changed.emit()
 
 

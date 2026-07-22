@@ -2,8 +2,9 @@ class_name SaveData
 extends Resource
 ## Serializable player / shop progress. Versioned for forward-compatible loads.
 
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
 const WORKER_SAVE_VERSION := 1
+const DECORATION_SAVE_VERSION := 1
 
 enum OrderStatus {
 	AVAILABLE,
@@ -30,6 +31,14 @@ enum OrderStatus {
 # Shop
 @export var shop_name: String = "Sugar Street Starter Shop"
 @export var shop_level: int = 1
+@export var shop_appeal: int = 0
+@export var shop_appeal_tier: String = "Plain"
+
+# Decorations (ownership / placement separate from catalog definitions)
+@export var decoration_save_version: int = DECORATION_SAVE_VERSION
+@export var owned_decorations: Dictionary = {} ## decoration_id -> true
+@export var placed_decorations: Dictionary = {} ## slot_id -> decoration_id
+@export var unlocked_decorations: Dictionary = {} ## decoration_id -> true
 
 # Progression maps
 @export var unlocked_recipes: Dictionary = {}
@@ -84,6 +93,23 @@ static func create_default() -> SaveData:
 	data.reputation = 0
 	data.shop_name = "Sugar Street Starter Shop"
 	data.shop_level = 1
+	data.shop_appeal = 0
+	data.shop_appeal_tier = "Plain"
+	data.decoration_save_version = DECORATION_SAVE_VERSION
+	data.owned_decorations = {
+		"wooden_starter_sign": true,
+		"small_mint_plant": true,
+	}
+	data.unlocked_decorations = {
+		"wooden_starter_sign": true,
+		"small_mint_plant": true,
+	}
+	data.placed_decorations = {
+		"front_sign": "wooden_starter_sign",
+		"plant_corner": "small_mint_plant",
+	}
+	data.shop_appeal = 10
+	data.shop_appeal_tier = "Plain"
 	data.unlocked_recipes = {
 		&"chocolate_strawberries": true,
 		&"classic_cupcakes": true,
@@ -135,6 +161,8 @@ static func create_default() -> SaveData:
 		"sfx_volume": 0.9,
 		"vibration": true,
 		"reduce_motion": false,
+		"last_decor_category": "All",
+		"decor_seen_unlocks": {},
 	}
 	return data
 
@@ -183,6 +211,20 @@ func apply_worker_defaults() -> void:
 		settings["sfx_volume"] = 0.9
 	if not settings.has("reduce_motion"):
 		settings["reduce_motion"] = false
+	if not settings.has("last_decor_category"):
+		settings["last_decor_category"] = "All"
+	if typeof(settings.get("decor_seen_unlocks", null)) != TYPE_DICTIONARY:
+		settings["decor_seen_unlocks"] = {}
+	if typeof(owned_decorations) != TYPE_DICTIONARY:
+		owned_decorations = {}
+	if typeof(placed_decorations) != TYPE_DICTIONARY:
+		placed_decorations = {}
+	if typeof(unlocked_decorations) != TYPE_DICTIONARY:
+		unlocked_decorations = {}
+	if decoration_save_version < 1:
+		decoration_save_version = DECORATION_SAVE_VERSION
+	shop_level = clampi(shop_level, 1, 5)
+	shop_appeal = maxi(0, shop_appeal)
 	# Cap equipment at phase max (3).
 	for eq_id in equipment_levels.keys():
 		equipment_levels[eq_id] = clampi(int(equipment_levels[eq_id]), 1, 3)
@@ -201,6 +243,12 @@ func clone_save_data() -> SaveData:
 	copy.reputation = reputation
 	copy.shop_name = shop_name
 	copy.shop_level = shop_level
+	copy.shop_appeal = shop_appeal
+	copy.shop_appeal_tier = shop_appeal_tier
+	copy.decoration_save_version = decoration_save_version
+	copy.owned_decorations = owned_decorations.duplicate(true)
+	copy.placed_decorations = placed_decorations.duplicate(true)
+	copy.unlocked_decorations = unlocked_decorations.duplicate(true)
 	copy.unlocked_recipes = unlocked_recipes.duplicate(true)
 	copy.equipment_levels = equipment_levels.duplicate(true)
 	copy.ingredients = ingredients.duplicate(true)
