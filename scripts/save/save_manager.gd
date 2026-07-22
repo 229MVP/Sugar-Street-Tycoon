@@ -10,6 +10,19 @@ static func has_save() -> bool:
 	return FileAccess.file_exists(SAVE_PATH)
 
 
+static func has_valid_save_file() -> bool:
+	## True only when primary or backup JSON parses as a dictionary.
+	if has_save():
+		var text := FileAccess.get_file_as_string(SAVE_PATH)
+		if typeof(JSON.parse_string(text)) == TYPE_DICTIONARY:
+			return true
+	if FileAccess.file_exists(BACKUP_PATH):
+		var bak := FileAccess.get_file_as_string(BACKUP_PATH)
+		if typeof(JSON.parse_string(bak)) == TYPE_DICTIONARY:
+			return true
+	return false
+
+
 static func save_game(data: SaveData) -> bool:
 	if data == null:
 		push_error("SaveManager: cannot save null data")
@@ -42,11 +55,11 @@ static func load_game() -> SaveData:
 	var parsed: Variant = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		push_warning("SaveManager: corrupted save — trying backup.")
-		return _load_backup_or_default()
+		return _recover_and_rewrite()
 	var data := _from_dict(parsed as Dictionary)
 	if data == null:
 		push_warning("SaveManager: failed to migrate save — trying backup.")
-		return _load_backup_or_default()
+		return _recover_and_rewrite()
 	return data
 
 
@@ -87,6 +100,14 @@ static func _load_backup_or_default() -> SaveData:
 				return data
 	push_warning("SaveManager: using default save after corruption.")
 	return SaveData.create_default()
+
+
+static func _recover_and_rewrite() -> SaveData:
+	## Recover once, then overwrite the corrupt primary so the next boot is clean.
+	var data := _load_backup_or_default()
+	if data:
+		save_game(data)
+	return data
 
 
 static func _to_dict(data: SaveData) -> Dictionary:

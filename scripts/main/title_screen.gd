@@ -14,6 +14,11 @@ var _exit_button: Button
 
 
 func _ready() -> void:
+	# Guardrail: this scene is the F5 entry point (project.godot run/main_scene).
+	if OS.is_debug_build():
+		var configured := str(ProjectSettings.get_setting("application/run/main_scene", ""))
+		if configured != "res://scenes/main/title_screen.tscn":
+			push_warning("TitleScreen: unexpected main_scene '%s'" % configured)
 	theme = ThemeFactory.build()
 	_build_ui()
 	_refresh_continue()
