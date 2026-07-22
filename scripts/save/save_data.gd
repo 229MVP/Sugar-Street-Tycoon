@@ -189,7 +189,7 @@ func apply_worker_defaults() -> void:
 	version = maxi(version, SAVE_VERSION)
 
 
-func duplicate_deep() -> SaveData:
+func clone_save_data() -> SaveData:
 	var copy := SaveData.new()
 	copy.version = version
 	copy.last_saved_unix = last_saved_unix
