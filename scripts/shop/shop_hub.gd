@@ -2,7 +2,10 @@ extends Control
 ## Cozy bakery Shop Hub — Figma-inspired frontend.
 
 
+const SettingsPopupScene := preload("res://scripts/ui/settings_popup.gd")
+
 var _confirm: ConfirmPopup
+var _settings: Control
 var _top_bar: TopResourceBar
 var _bottom_nav: BottomNavigation
 var _orders_badge: NotificationBadgeView
@@ -112,6 +115,8 @@ func _build() -> void:
 
 	_confirm = ConfirmPopup.new()
 	add_child(_confirm)
+	_settings = SettingsPopupScene.new()
+	add_child(_settings)
 
 
 func _build_interior(host: Control) -> void:
@@ -194,13 +199,13 @@ func _small_btn(parent: Control, text: String, cb: Callable, disabled: bool = fa
 
 
 func _on_menu() -> void:
-	_confirm.show_confirm("Menu", "Settings, title, and account options live here.", "Settings", "Close")
+	_confirm.show_confirm("Menu", "Open settings or return to the title screen?", "Settings", "Close")
 	if not _confirm.confirmed.is_connected(_on_settings):
 		_confirm.confirmed.connect(_on_settings, CONNECT_ONE_SHOT)
 
 
 func _on_settings() -> void:
-	_confirm.show_confirm("Settings", "Music and SFX toggles expand here.", "OK", "Close")
+	_settings.call("show_settings")
 
 
 func _on_nav_tab(tab_id: String) -> void:

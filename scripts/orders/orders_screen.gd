@@ -108,7 +108,7 @@ func _rebuild() -> void:
 		return
 	for c in _list.get_children():
 		c.queue_free()
-	for order in GameState.get_visible_orders():
+	for order in GameState.get_orders_for_screen():
 		var card := CustomerOrderCard.new()
 		_list.add_child(card)
 		card.setup(order, GameState.get_order_status(str(order.order_id)))

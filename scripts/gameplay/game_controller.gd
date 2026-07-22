@@ -31,12 +31,16 @@ var _result_reported: bool = false
 func _ready() -> void:
 	add_to_group("game_controller")
 	# Prefer level/order injected by the shop flow.
-	if SceneRouter.pending_level_config != null:
-		level_config = SceneRouter.pending_level_config
-		session_order_id = SceneRouter.pending_order_id
-		var order := GameState.catalog.get_order(StringName(session_order_id))
-		if order:
-			session_recipe_id = order.recipe_id
+	# Resolve Autoloads via node path so -s headless scripts compile cleanly.
+	var router := get_node_or_null("/root/SceneRouter")
+	var gs := get_node_or_null("/root/GameState")
+	if router != null and router.get("pending_level_config") != null:
+		level_config = router.pending_level_config
+		session_order_id = str(router.pending_order_id)
+		if gs != null:
+			var order = gs.catalog.get_order(StringName(session_order_id))
+			if order:
+				session_recipe_id = order.recipe_id
 	if level_config == null:
 		level_config = load("res://resources/levels/level_01.tres") as LevelConfig
 	# Defer so gameplay_root can inject the board reference first.
@@ -47,10 +51,21 @@ func set_board(board: MatchBoard) -> void:
 	_board = board
 
 
+func _game_state() -> Node:
+	return get_node_or_null("/root/GameState")
+
+
+func _scene_router() -> Node:
+	return get_node_or_null("/root/SceneRouter")
+
+
 func configure_session(order_id: String, config: LevelConfig) -> void:
 	session_order_id = order_id
 	level_config = config
-	var order := GameState.catalog.get_order(StringName(order_id))
+	var gs := _game_state()
+	if gs == null:
+		return
+	var order = gs.catalog.get_order(StringName(order_id))
 	if order:
 		session_recipe_id = order.recipe_id
 
@@ -102,11 +117,13 @@ func start_level(config: LevelConfig = null) -> void:
 
 	hud_refresh_requested.emit()
 	var msg := "Order up! Match desserts to fill the tray."
-	if session_order_id != "":
-		var order := GameState.catalog.get_order(StringName(session_order_id))
+	var gs := _game_state()
+	if session_order_id != "" and gs != null:
+		var order = gs.catalog.get_order(StringName(session_order_id))
 		if order:
+			var recipe = gs.catalog.get_recipe(order.recipe_id)
 			msg = "Preparing %s for %s!" % [
-				GameState.catalog.get_recipe(order.recipe_id).display_name if GameState.catalog.get_recipe(order.recipe_id) else "order",
+				recipe.display_name if recipe else "order",
 				order.customer_name
 			]
 	status_message.emit(msg)
@@ -138,13 +155,17 @@ func exit_to_ready() -> void:
 	## Return to shop hub when playing from an order; otherwise restart.
 	if session_order_id != "":
 		_report_loss_if_needed()
-		SceneRouter.return_to_shop_from_level()
+		var router := _scene_router()
+		if router:
+			router.return_to_shop_from_level()
 	else:
 		await restart_level()
 
 
 func return_to_shop() -> void:
-	SceneRouter.return_to_shop_from_level()
+	var router := _scene_router()
+	if router:
+		router.return_to_shop_from_level()
 
 
 func get_score() -> int:
@@ -252,8 +273,9 @@ func _report_win() -> void:
 		"move_limit": level_state.move_limit,
 		"stars": PlayerProgression.calculate_stars(level_state.moves_remaining, level_state.move_limit),
 	}
-	if session_order_id != "":
-		GameState.on_level_won(
+	var gs := _game_state()
+	if session_order_id != "" and gs != null:
+		gs.on_level_won(
 			session_order_id,
 			score_tracker.score,
 			level_state.moves_remaining,
@@ -271,8 +293,9 @@ func _report_loss_if_needed() -> void:
 		"score": score_tracker.score,
 		"progress": objective_tracker.get_progress_text(),
 	}
-	if session_order_id != "":
-		GameState.on_level_lost(session_order_id)
+	var gs := _game_state()
+	if session_order_id != "" and gs != null:
+		gs.on_level_lost(session_order_id)
 	level_session_finished.emit(false, payload)
 
 

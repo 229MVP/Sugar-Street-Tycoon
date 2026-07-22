@@ -1,10 +1,10 @@
 # Sugar Street Tycoon: Match & Build
 
-Portrait **Godot 4.3** / **GDScript** bakery match-3 with a Figma-inspired cozy UI.
+Portrait **Godot 4.3** / **GDScript** bakery match-3 with a shop management vertical slice.
 
-**Core loop:** Title → Shop Hub → Orders → Match-3 (`main.tscn`) → Level Complete → Orders / Shop → Complete Order
+**Core loop:** Title → Shop Hub → Orders → Match-3 (`main.tscn`) → Win/Lose → Orders / Shop → Complete Order → Rewards → Save → Next Order
 
-Workers / locations / events / ads / IAP / Supabase are **not** part of the active UI (Coming Soon / gated).
+Workers / locations / events / ads / IAP / Supabase / offline earnings are **not** part of this phase (Coming Soon / gated).
 
 ---
 
@@ -15,7 +15,7 @@ Workers / locations / events / ads / IAP / Supabase are **not** part of the acti
 3. Press **F5** — main scene is `res://scenes/main/title_screen.tscn`.
 4. Play / Continue → Shop Hub → **Orders** → Start Order → puzzle.
 
-**Viewport:** 405×720 portrait, `canvas_items` + `keep_width` stretch (scales to common phones).
+**Viewport:** 405×720 portrait, `canvas_items` + `keep_width` stretch.
 
 ---
 
@@ -26,97 +26,231 @@ title_screen.tscn
   → shop_hub.tscn
       → orders_screen.tscn
           → main.tscn  (hosts gameplay.tscn in GameplaySlot)
-              → Level Complete popup
+              → Level Complete / Order Failed popup
               → orders_screen / shop_hub
-      → recipe_book / upgrades / inventory
+      → recipe_book.tscn
+      → upgrades_screen.tscn
+      → inventory_screen.tscn
 ```
 
-Autoloads: `GameState`, `AudioManager`, `SceneRouter`  
-Helpers: `NavigationManager`, `ThemeFactory`, `SugarStreetColors`
+**Autoloads:** `GameState`, `AudioManager`, `SceneRouter`  
+**Helpers:** `NavigationManager`, `SaveManager`, `RewardCalculator`, `PlayerProgression`, `ThemeFactory`
+
+Main scene: `res://scenes/main/title_screen.tscn`
 
 ---
 
-## UI structure
+## GameState structure
 
-| Screen | Path |
-|--------|------|
-| Title | `scenes/main/title_screen.tscn` |
-| Shop Hub | `scenes/shop/shop_hub.tscn` |
-| Orders | `scenes/orders/orders_screen.tscn` |
-| Puzzle host | `scenes/main/main.tscn` |
-| Level Complete | `scenes/popups/level_complete_popup.tscn` |
-| Theme | `resources/themes/sugar_street_theme.tres` + `scripts/theme/` |
+Autoload: `scripts/shop/game_state.gd`
 
-### Shared components
+Owns runtime progression (no scene node refs):
 
-- `scenes/ui/top_resource_bar.tscn` — level / energy / coins / stars / menu
-- `scenes/ui/bottom_navigation.tscn` — Shop / Inventory / Customers / Events
-- `scripts/ui/components/customer_order_card.gd`
-- `scripts/ui/components/notification_badge_view.gd`
-- Theme styles via `ThemeFactory` (mint primary, coral secondary, cream cards)
+| Field | Notes |
+|-------|--------|
+| `player_level` / `experience` | XP curve below |
+| `coins` / `stars` / `reputation` | Player resources |
+| `shop_level` / `shop_name` | Shop meta |
+| `active_order_id` | Selected / in-progress order |
+| `order_statuses` / `order_reward_claimed` | Per-order runtime |
+| `completed_order_ids` / `visible_order_ids` | Board |
+| `best_level_stars` / `best_level_scores` | Never decrease |
+| `granted_level_stars` | Permanent stars already awarded per level |
+| `unlocked_recipes` / `equipment_levels` / `ingredients` | Progression |
+| `current_session_result` | Last puzzle result |
+| `settings` | Music/SFX/vibration/reduce motion |
+| Save version | `SaveData.SAVE_VERSION` (**3**) |
 
----
-
-## Assets
-
-### Present
-
-- `assets/placeholders/*.png` — dessert piece art (chocolate, strawberry, cupcake, cookie, candy, donut)
-
-### Missing (use placeholders)
-
-- `assets/backgrounds/title_background.png`
-- `assets/backgrounds/shop_background.png`
-- `assets/ui/sugar_street_logo.png`
-- `assets/characters/` portraits
-- `assets/icons/`
-- Final `assets/pieces/` overrides
-
-Drop Figma exports into those folders; screens already prefer them when present and fall back to ColorRect / ThemeFactory styling.
-
-### How to replace art
-
-| Goal | Do this |
-|------|---------|
-| Title background | Add `assets/backgrounds/title_background.png` and load it in `title_screen.gd` |
-| Logo | Add `assets/ui/sugar_street_logo.png` and swap the Label brand block for a `TextureRect` |
-| Customer portrait | Add `assets/characters/<name>.png` and set `OrderTemplate.customer_avatar` |
-| Piece art | Replace files under `assets/placeholders/` (or point PieceType textures at `assets/pieces/`) |
-| Add an order | Extend `_build_orders()` in `scripts/shop/content_catalog.gd` and append to `order_sequence` |
+Signals include: `coins_changed`, `stars_changed`, `reputation_changed`, `experience_changed`, `player_level_changed`, `selected_order_changed`, `order_status_changed`, `save_loaded`, `save_completed`.
 
 ---
 
-## Starter orders
+## Save-data structure
 
-1. **Lily** — Chocolate Strawberries · 20 strawberries · 20 moves · 320 / 25 / 5  
-2. **Noah** — Chocolate Cupcakes · 25 chocolate · 22 moves · 380 / 35 / 8  
-3. **Mrs. Maple** — Classic Pastries · 30 cookies · 20 moves · 350 / 45 / 10  
+Local JSON: `user://sugar_street_save.json` via `SaveManager`.
 
-Winning marks **Ready to Complete**. Rewards grant once via **Complete Order**.
+Saved fields: version, timestamp, player stats, shop, recipes, equipment, ingredients, order statuses, reward-claimed flags, completed IDs, best scores/stars, granted permanent stars, settings, plus legacy worker/passive fields for migration.
+
+- Load on boot; defaults when missing
+- Corrupted files recover from `.bak` or defaults (no crash)
+- Missing fields filled safely
+- Migration: v1/v2 → v3 (Mia order catalog cleanup)
 
 ---
 
-## Save
+## Customer-order data structure
 
-Local JSON: `user://sugar_street_save.json`  
-Fields include level, XP, coins, stars, reputation, order statuses, completed IDs, best scores/stars, settings, version. Single save system via `SaveManager` + `GameState`.
+`OrderTemplate` (`scripts/data/order_template.gd`) + catalog (`scripts/shop/content_catalog.gd`):
+
+- Order ID, customer name/message, recipe ID/name
+- Target piece ID + amount (and `additional_objectives` for multi-target)
+- Move limit, level ID, difficulty
+- Coin / XP / reputation / ingredient rewards
+- Runtime: status, best score/stars, completed, reward-claimed
+
+**Statuses:** Available · Selected · In Progress (`LEVEL_IN_PROGRESS`) · Ready to Complete · Completed · Failed · Locked
+
+### Starter orders
+
+| ID | Customer | Recipe | Objective | Moves | Coins/XP/Rep | Difficulty |
+|----|----------|--------|-----------|-------|--------------|------------|
+| `order_mia_001` | Mia | Chocolate Strawberries | 20 Strawberry | 20 | 150/25/5 | Easy |
+| `order_jordan_002` | Jordan | Classic Cupcakes | 22 Cupcake | 22 | 200/35/7 | Easy |
+| `order_taylor_003` | Taylor | Chocolate Strawberries | 25 Chocolate | 20 | 275/45/10 | Medium |
+| `order_noah_004` | Noah | Classic Cupcakes | 18 Cupcake + 12 Candy | 24 | 325/55/12 | Medium |
+| `order_morgan_005` | Morgan | Candied Grapes | 35 Candy | 18 | 450/75/18 | Hard (locked) |
+
+Winning marks **Ready to Complete**. Rewards grant **once** via `GameState.complete_order(order_id)`.
+
+---
+
+## Level configuration structure
+
+`LevelConfig` (`scripts/data/level_config.gd`):
+
+- `level_id`, board width/height, `move_limit`
+- `objectives` (one or many `ObjectiveData`)
+- Optional score thresholds (future), `piece_types`, difficulty via order
+- Order start clones the template and applies order move/objective overrides
+
+Board templates: `level_01` … `level_05` in `ContentCatalog._build_levels()`.
+
+---
+
+## Reward calculation order
+
+`RewardCalculator.compute_order_rewards`:
+
+1. Base reward (order template)
+2. Equipment-specific bonuses (Oven coins / Mixer XP / Display reputation: **+2% per level above 1**)
+3. Checkout Counter global bonus (**+1% per level above 1** on all)
+4. Worker bonus placeholder (0 this phase)
+5. Event bonus placeholder (0)
+6. Final rounded integers
+
+---
+
+## Star-rating rules
+
+- **1★** — level completed  
+- **2★** — ≥ 25% starting moves remaining  
+- **3★** — ≥ 50% starting moves remaining  
+
+Best rating per level never decreases. Permanent player stars = difference between new best and already granted (`granted_level_stars`). Prevents farming the same level for unlimited stars.
+
+---
+
+## Player-level formula
+
+XP to next level: `100 + ((current_level - 1) × 75)`
+
+| From → To | XP |
+|-----------|-----|
+| 1 → 2 | 100 |
+| 2 → 3 | 175 |
+| 3 → 4 | 250 |
+
+Level-up coin reward: `100 × new_player_level`. Excess XP carries forward; multiple level-ups from one grant are supported.
+
+---
+
+## Recipe-unlock rules
+
+| Recipe | Default | Requirements | Cost |
+|--------|---------|--------------|------|
+| Chocolate Strawberries | Unlocked | — | — |
+| Classic Cupcakes | Unlocked | — | — |
+| Candied Grapes | Locked | Player Lv 2 + 3★ | 300 |
+| Cookies and Cream Cupcakes | Locked | Player Lv 3 + 6★ | 500 |
+
+Unlock validates, deducts coins, saves immediately, blocks duplicates, and unlocks dependent orders (Morgan).
+
+---
+
+## Equipment-upgrade rules
+
+Oven / Mixer / Display Case / Checkout Counter — levels **1–3** this phase.
+
+| Upgrade | Cost |
+|---------|------|
+| 1 → 2 | 500 |
+| 2 → 3 | 1,000 |
+
+Benefits: Oven +2% order coins / Mixer +2% XP / Display +2% reputation / Checkout +1% all — per level above 1.
+
+---
+
+## Inventory behavior
+
+Ingredients displayed with quantity and category placeholders. Order rewards add stock. Ingredients are **not consumed** yet and cannot go negative.
+
+Starter: Chocolate/Strawberries/Flour/Sugar **5**, Cream/Packaging **3**, others **0**.
+
+---
+
+## Debug controls
+
+Dev-only (`OS.is_debug_build()` + `GameState.DEBUG_TOOLS_ENABLED`): Shop Debug panel.
+
+Add coins/stars/XP/rep · complete/win/lose level · set moves · unlock recipes · max equipment (Lv3) · reset orders · print GameState/save · corrupt/reset save.
+
+---
+
+## How to add content
+
+### New order
+1. Add `_add_order(...)` in `ContentCatalog._build_orders()`
+2. Append ID to `order_sequence`
+3. Point `level_id` at a board template; set targets / `additional_objectives` / rewards
+
+### New level
+1. Add `_make_level(...)` in `_build_levels()` (and optional `.tres` under `resources/levels/`)
+2. Reference from an order’s `level_id`
+
+### New recipe
+1. `_add_recipe(...)` in `_build_recipes()`
+2. Wire unlock requirements; gated orders use `requires_recipe_unlocked`
+
+### New equipment
+1. `_add_equipment(...)` in `_build_equipment()`
+2. Extend `RewardCalculator` if a new bonus type is needed
+
+---
+
+## Final artwork integration
+
+Placeholder hooks:
+
+| Goal | Location |
+|------|----------|
+| Title / shop backgrounds | `assets/backgrounds/` + load in title/shop scripts |
+| Logo | `assets/ui/sugar_street_logo.png` |
+| Customer portraits | `OrderTemplate.customer_avatar` |
+| Piece art | `assets/placeholders/` / `PieceType` textures |
+| Recipe icons | Recipe book ColorRect → TextureRect |
+
+Do not embed screenshots as interactive screens.
 
 ---
 
 ## Headless tests
 
 ```bash
-godot --headless --path . -s res://scripts/tools/headless_f5_boot_test.gd
-godot --headless --path . -s res://scripts/tools/headless_nav_boot_test.gd
-godot --headless --path . -s res://scripts/tools/headless_shop_loop_test.gd
-godot --headless --path . -s res://scripts/tools/headless_smoke_test.gd
+GODOT=/tmp/Godot_v4.3-stable_linux.x86_64   # or your godot binary
+$GODOT --headless --path . -s res://scripts/tools/headless_f5_boot_test.gd
+$GODOT --headless --path . -s res://scripts/tools/headless_nav_boot_test.gd
+$GODOT --headless --path . -s res://scripts/tools/headless_shop_loop_test.gd
+$GODOT --headless --path . -s res://scripts/tools/headless_smoke_test.gd
+$GODOT --headless --path . -s res://scripts/tools/headless_swap_test.gd
+$GODOT --headless --path . -s res://scripts/tools/headless_invalid_swap_test.gd
 ```
 
 ---
 
-## Current limitations
+## Known limitations
 
-- Final Figma bitmaps not imported yet (styled placeholders).
-- Boosters on the match-3 HUD are visual-only (disabled).
-- Workers / Locations / Events / Decor / Sign-in / Trophies / Favorites show Coming Soon.
-- Worker/passive backend code may still exist from earlier branches but is gated in the new UI.
+- Final Figma bitmaps not imported (styled placeholders).
+- Match-3 boosters are visual-only (disabled).
+- Workers / Locations / Events / Decor / Sign-in gated as Coming Soon.
+- Worker/passive backend code may exist from earlier branches but is not exposed in this UI phase.
+- Ingredients are not consumed when fulfilling recipes yet.

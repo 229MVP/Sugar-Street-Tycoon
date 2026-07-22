@@ -6,6 +6,9 @@ signal coins_changed(amount: int)
 signal stars_changed(amount: int)
 signal reputation_changed(amount: int)
 signal experience_changed(current: int, required: int, level: int)
+signal player_level_changed(level: int)
+signal selected_order_changed(order_id: String)
+signal order_status_changed(order_id: String, status: int)
 signal order_updated(order_id: String)
 signal recipe_unlocked(recipe_id: StringName)
 signal equipment_upgraded(equipment_id: StringName, new_level: int)
@@ -18,8 +21,10 @@ signal passive_collected(amount: int)
 signal offline_earnings_ready(payload: Dictionary)
 signal level_up(new_level: int, coin_reward: int)
 signal notifications_changed
+signal save_loaded
 signal save_completed
 
+## True in editor / debug builds only. Production exports hide debug panels.
 const DEBUG_TOOLS_ENABLED := true
 
 var catalog := ContentCatalog.new()
@@ -27,6 +32,7 @@ var data: SaveData
 var pending_level_ups: Array[Dictionary] = []
 var last_completion_rewards: Dictionary = {}
 var last_offline_payload: Dictionary = {}
+var current_session_result: Dictionary = {}
 var _busy: bool = false
 var _rng := RandomNumberGenerator.new()
 
@@ -39,6 +45,8 @@ func _ready() -> void:
 	else:
 		data = SaveData.create_default()
 	_post_load_setup()
+	_apply_audio_settings()
+	save_loaded.emit()
 	emit_signal("state_changed")
 
 
@@ -46,13 +54,7 @@ func _post_load_setup() -> void:
 	data.apply_worker_defaults()
 	WorkerManager.repair_assignments(catalog, data)
 	_ensure_order_board()
-	var offline := OfflineEarningsCalculator.calculate(catalog, data)
-	if offline.get("ok", false):
-		var added := OfflineEarningsCalculator.apply_to_storage(catalog, data, offline)
-		if added > 0 or int(offline.get("total_coins", 0)) > 0:
-			last_offline_payload = data.offline_pending_popup.duplicate(true)
-			offline_earnings_ready.emit(last_offline_payload)
-	PassiveIncomeManager.tick(catalog, data)
+	# Passive/offline systems remain in code for migration but are not exposed this phase.
 	OfflineEarningsCalculator.mark_session_active(data)
 
 
@@ -60,16 +62,32 @@ func has_save() -> bool:
 	return SaveManager.has_save()
 
 
+func has_valid_save() -> bool:
+	if not SaveManager.has_save():
+		return false
+	var loaded := SaveManager.load_game()
+	return loaded != null and loaded.player_level >= 1
+
+
 func new_game() -> void:
+	var preserved_settings: Dictionary = {}
+	if data != null and typeof(data.settings) == TYPE_DICTIONARY:
+		preserved_settings = data.settings.duplicate(true)
 	data = SaveData.create_default()
+	if not preserved_settings.is_empty():
+		data.settings = preserved_settings
 	_post_load_setup()
+	_apply_audio_settings()
 	save_now()
+	save_loaded.emit()
 	state_changed.emit()
 
 
 func continue_game() -> void:
 	data = SaveManager.load_game()
 	_post_load_setup()
+	_apply_audio_settings()
+	save_loaded.emit()
 	state_changed.emit()
 
 
@@ -80,11 +98,35 @@ func save_now() -> void:
 
 
 func reset_save() -> void:
+	var preserved_settings: Dictionary = {}
+	if data != null and typeof(data.settings) == TYPE_DICTIONARY:
+		preserved_settings = data.settings.duplicate(true)
 	SaveManager.delete_save()
 	data = SaveData.create_default()
+	if not preserved_settings.is_empty():
+		data.settings = preserved_settings
 	_ensure_order_board()
+	_apply_audio_settings()
+	save_now()
+	save_loaded.emit()
+	state_changed.emit()
+
+
+func update_settings(patch: Dictionary) -> void:
+	for key in patch.keys():
+		data.settings[key] = patch[key]
+	_apply_audio_settings()
 	save_now()
 	state_changed.emit()
+
+
+func _apply_audio_settings() -> void:
+	if data == null:
+		return
+	AudioManager.enabled = bool(data.settings.get("sfx_enabled", true))
+	AudioManager.set_sfx_volume(float(data.settings.get("sfx_volume", 0.9)))
+	AudioManager.set_music_volume(float(data.settings.get("music_volume", 0.8)))
+	AudioManager.set_music_enabled(bool(data.settings.get("music_enabled", true)))
 
 
 func is_busy() -> bool:
@@ -112,7 +154,21 @@ func get_ingredient_amount(ingredient_id: StringName) -> int:
 
 
 func get_order_status(order_id: String) -> int:
-	return int(data.order_statuses.get(order_id, SaveData.OrderStatus.AVAILABLE))
+	var order := catalog.get_order(StringName(order_id))
+	if order != null and order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
+		var stored := int(data.order_statuses.get(order_id, SaveData.OrderStatus.LOCKED))
+		if stored in [SaveData.OrderStatus.READY_TO_COMPLETE, SaveData.OrderStatus.LEVEL_IN_PROGRESS, SaveData.OrderStatus.COMPLETED]:
+			return stored
+		return SaveData.OrderStatus.LOCKED
+	var status := int(data.order_statuses.get(order_id, SaveData.OrderStatus.AVAILABLE))
+	# Recipe unlock promotes former LOCKED rows to Available.
+	if status == SaveData.OrderStatus.LOCKED:
+		return SaveData.OrderStatus.AVAILABLE
+	return status
+
+
+func is_order_reward_claimed(order_id: String) -> bool:
+	return bool(data.order_reward_claimed.get(order_id, false))
 
 
 func get_visible_orders() -> Array[OrderTemplate]:
@@ -121,6 +177,34 @@ func get_visible_orders() -> Array[OrderTemplate]:
 		var order := catalog.get_order(StringName(id))
 		if order:
 			result.append(order)
+	return result
+
+
+func get_orders_for_screen() -> Array[OrderTemplate]:
+	## Full catalog order list for the Orders screen (includes locked).
+	var result: Array[OrderTemplate] = []
+	var seen: Dictionary = {}
+	for id in data.visible_order_ids:
+		var order := catalog.get_order(StringName(id))
+		if order:
+			result.append(order)
+			seen[str(id)] = true
+	for id_name in catalog.order_sequence:
+		var id := str(id_name)
+		if seen.has(id):
+			continue
+		var order := catalog.get_order(id_name)
+		if order == null:
+			continue
+		# Show locked recipe orders so players can see unlock requirements.
+		if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
+			result.append(order)
+			seen[id] = true
+			continue
+		if id in data.completed_order_ids:
+			continue
+		result.append(order)
+		seen[id] = true
 	return result
 
 
@@ -189,16 +273,19 @@ func select_order(order_id: String) -> bool:
 	if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
 		return false
 	var status := get_order_status(order_id)
-	if status in [SaveData.OrderStatus.COMPLETED, SaveData.OrderStatus.READY_TO_COMPLETE, SaveData.OrderStatus.LEVEL_IN_PROGRESS]:
+	if status in [SaveData.OrderStatus.COMPLETED, SaveData.OrderStatus.READY_TO_COMPLETE, SaveData.OrderStatus.LEVEL_IN_PROGRESS, SaveData.OrderStatus.LOCKED]:
 		return false
 	# Clear previous selected if different.
 	if data.active_order_id != "" and data.active_order_id != order_id:
 		var prev := get_order_status(data.active_order_id)
 		if prev == SaveData.OrderStatus.SELECTED or prev == SaveData.OrderStatus.FAILED:
 			data.order_statuses[data.active_order_id] = SaveData.OrderStatus.AVAILABLE
+			order_status_changed.emit(data.active_order_id, SaveData.OrderStatus.AVAILABLE)
 	data.active_order_id = order_id
 	data.order_statuses[order_id] = SaveData.OrderStatus.SELECTED
 	save_now()
+	selected_order_changed.emit(order_id)
+	order_status_changed.emit(order_id, SaveData.OrderStatus.SELECTED)
 	order_updated.emit(order_id)
 	state_changed.emit()
 	return true
@@ -211,17 +298,28 @@ func begin_order_level(order_id: String) -> LevelConfig:
 	if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
 		return null
 	var status := get_order_status(order_id)
-	if status == SaveData.OrderStatus.COMPLETED or status == SaveData.OrderStatus.READY_TO_COMPLETE:
+	if status == SaveData.OrderStatus.COMPLETED or status == SaveData.OrderStatus.LOCKED:
 		return null
+	# READY_TO_COMPLETE allowed for practice replay without clearing the win.
 	var level := _build_level_for_order(order)
 	if level == null or not level.validate():
 		push_error("GameState: invalid level config for order '%s'" % order_id)
 		return null
 	data.active_order_id = order_id
-	data.order_statuses[order_id] = SaveData.OrderStatus.LEVEL_IN_PROGRESS
+	if status != SaveData.OrderStatus.READY_TO_COMPLETE:
+		data.order_statuses[order_id] = SaveData.OrderStatus.LEVEL_IN_PROGRESS
+		order_status_changed.emit(order_id, SaveData.OrderStatus.LEVEL_IN_PROGRESS)
+	selected_order_changed.emit(order_id)
 	save_now()
 	order_updated.emit(order_id)
 	return level
+
+
+func build_level_config_for_order(order_id: String) -> LevelConfig:
+	var order := catalog.get_order(StringName(order_id))
+	if order == null:
+		return null
+	return _build_level_for_order(order)
 
 
 func _build_level_for_order(order: OrderTemplate) -> LevelConfig:
@@ -237,12 +335,15 @@ func _build_level_for_order(order: OrderTemplate) -> LevelConfig:
 	level.piece_types = base.piece_types.duplicate()
 	level.min_valid_moves = base.min_valid_moves
 	level.move_limit = order.move_limit if order.move_limit > 0 else base.move_limit
-	if order.target_piece_id != &"" and order.target_amount > 0:
-		var obj := ObjectiveData.new()
-		obj.piece_id = order.target_piece_id
-		obj.target_amount = order.target_amount
-		obj.description = order.objective_text()
-		var objs: Array[ObjectiveData] = [obj]
+	var targets := order.all_collection_targets()
+	if not targets.is_empty():
+		var objs: Array[ObjectiveData] = []
+		for t in targets:
+			var obj := ObjectiveData.new()
+			obj.piece_id = StringName(str(t["piece_id"]))
+			obj.target_amount = int(t["amount"])
+			obj.description = "Collect %d %ss" % [obj.target_amount, str(obj.piece_id)]
+			objs.append(obj)
 		level.objectives = objs
 	else:
 		level.objectives = base.objectives.duplicate()
@@ -255,21 +356,32 @@ func on_level_won(order_id: String, score: int, moves_remaining: int, move_limit
 	var order := catalog.get_order(StringName(order_id))
 	if order:
 		level_id = order.level_id
+	var prev_level_stars := int(data.best_level_stars.get(level_id, 0)) if level_id != "" else 0
+	var prev_order_stars := int(data.best_order_stars.get(order_id, 0))
+	var star_delta := maxi(0, stars_earned - maxi(prev_level_stars, prev_order_stars))
 	data.order_statuses[order_id] = SaveData.OrderStatus.READY_TO_COMPLETE
 	data.order_level_results[order_id] = {
 		"score": score,
 		"moves_remaining": moves_remaining,
 		"stars": stars_earned,
+		"star_delta": star_delta,
 		"move_limit": move_limit,
+		"objectives_complete": true,
 	}
+	current_session_result = data.order_level_results[order_id].duplicate(true)
 	if level_id != "":
-		var prev_stars := int(data.best_level_stars.get(level_id, 0))
-		if stars_earned > prev_stars:
+		if stars_earned > prev_level_stars:
 			data.best_level_stars[level_id] = stars_earned
 		var prev_score := int(data.best_level_scores.get(level_id, 0))
 		if score > prev_score:
 			data.best_level_scores[level_id] = score
+	if stars_earned > prev_order_stars:
+		data.best_order_stars[order_id] = stars_earned
+	var prev_order_score := int(data.best_order_scores.get(order_id, 0))
+	if score > prev_order_score:
+		data.best_order_scores[order_id] = score
 	save_now()
+	order_status_changed.emit(order_id, SaveData.OrderStatus.READY_TO_COMPLETE)
 	order_updated.emit(order_id)
 	notifications_changed.emit()
 	state_changed.emit()
@@ -277,8 +389,16 @@ func on_level_won(order_id: String, score: int, moves_remaining: int, move_limit
 
 
 func on_level_lost(order_id: String) -> void:
+	var status := get_order_status(order_id)
+	# Preserve a prior Ready-to-Complete win during practice replay.
+	if status == SaveData.OrderStatus.READY_TO_COMPLETE or status == SaveData.OrderStatus.COMPLETED:
+		current_session_result = {"order_id": order_id, "failed_replay": true}
+		save_now()
+		return
 	data.order_statuses[order_id] = SaveData.OrderStatus.FAILED
+	current_session_result = {"order_id": order_id, "failed": true}
 	save_now()
+	order_status_changed.emit(order_id, SaveData.OrderStatus.FAILED)
 	order_updated.emit(order_id)
 	state_changed.emit()
 
@@ -290,6 +410,8 @@ func complete_order(order_id: String) -> Dictionary:
 		return {}
 	if order_id in data.completed_order_ids:
 		return {}
+	if is_order_reward_claimed(order_id):
+		return {}
 	var order := catalog.get_order(StringName(order_id))
 	if order == null:
 		return {}
@@ -298,7 +420,12 @@ func complete_order(order_id: String) -> Dictionary:
 	var rewards := RewardCalculator.compute_order_rewards(order, data, catalog)
 	var result: Dictionary = data.order_level_results.get(order_id, {})
 	var stars_earned := int(result.get("stars", 1))
+	var level_id := order.level_id
+	var best_stars := int(data.best_level_stars.get(level_id, stars_earned))
+	var already_granted := int(data.granted_level_stars.get(level_id, 0))
+	var permanent_stars := maxi(0, best_stars - already_granted)
 	var breakdown: Dictionary = rewards.get("breakdown", {})
+	# Worker bonus ingredient rolls are placeholders this phase (chance typically 0).
 	var chance := float(breakdown.get("bonus_ingredient_chance", 0.0))
 	var bonus_ings := RewardCalculator.roll_bonus_ingredients(order, chance, _rng)
 	for k in bonus_ings.keys():
@@ -306,18 +433,26 @@ func complete_order(order_id: String) -> Dictionary:
 
 	data.coins += int(rewards["coins"])
 	data.reputation += int(rewards["reputation"])
-	data.stars += stars_earned
+	data.stars += permanent_stars
+	data.granted_level_stars[level_id] = already_granted + permanent_stars
 	for ing_id in rewards["ingredients"].keys():
 		var add_amt := int(rewards["ingredients"][ing_id])
 		var key := str(ing_id)
-		data.ingredients[key] = int(data.ingredients.get(key, 0)) + add_amt
+		data.ingredients[key] = maxi(0, int(data.ingredients.get(key, 0)) + add_amt)
 
+	var level_before := data.player_level
 	pending_level_ups = PlayerProgression.apply_experience(data, int(rewards["experience"]))
+	for up in pending_level_ups:
+		level_up.emit(int(up.get("new_level", data.player_level)), int(up.get("coin_reward", 0)))
+	if data.player_level != level_before:
+		player_level_changed.emit(data.player_level)
 
+	data.order_reward_claimed[order_id] = true
 	data.order_statuses[order_id] = SaveData.OrderStatus.COMPLETED
 	data.completed_order_ids.append(order_id)
 	if data.active_order_id == order_id:
 		data.active_order_id = ""
+		selected_order_changed.emit("")
 	_replace_visible_order(order_id)
 
 	last_completion_rewards = {
@@ -328,7 +463,8 @@ func complete_order(order_id: String) -> Dictionary:
 		"coins": rewards["coins"],
 		"experience": rewards["experience"],
 		"reputation": rewards["reputation"],
-		"stars": stars_earned,
+		"stars": permanent_stars,
+		"stars_earned_run": stars_earned,
 		"ingredients": rewards["ingredients"],
 		"bonus_ingredients": bonus_ings,
 		"breakdown": breakdown,
@@ -340,6 +476,7 @@ func complete_order(order_id: String) -> Dictionary:
 	stars_changed.emit(data.stars)
 	reputation_changed.emit(data.reputation)
 	experience_changed.emit(data.experience, PlayerProgression.xp_required_for_next_level(data.player_level), data.player_level)
+	order_status_changed.emit(order_id, SaveData.OrderStatus.COMPLETED)
 	order_updated.emit(order_id)
 	notifications_changed.emit()
 	state_changed.emit()
@@ -364,6 +501,14 @@ func unlock_recipe(recipe_id: StringName) -> Dictionary:
 	var recipe := catalog.get_recipe(recipe_id)
 	data.coins = maxi(0, data.coins - recipe.unlock_coin_cost)
 	data.unlocked_recipes[str(recipe_id)] = true
+	for id_name in catalog.order_sequence:
+		var order := catalog.get_order(id_name)
+		if order == null or order.recipe_id != recipe_id:
+			continue
+		var oid := str(id_name)
+		if int(data.order_statuses.get(oid, SaveData.OrderStatus.LOCKED)) == SaveData.OrderStatus.LOCKED:
+			data.order_statuses[oid] = SaveData.OrderStatus.AVAILABLE
+			order_status_changed.emit(oid, SaveData.OrderStatus.AVAILABLE)
 	_ensure_order_board()
 	save_now()
 	coins_changed.emit(data.coins)
@@ -621,10 +766,28 @@ func debug_reset_orders() -> void:
 
 func debug_max_equipment() -> void:
 	for id in catalog.equipment.keys():
-		data.equipment_levels[str(id)] = 5
-	data.shop_level = 5
+		data.equipment_levels[str(id)] = 3
+	data.shop_level = 3
 	save_now()
 	state_changed.emit()
+
+
+func debug_print_gamestate() -> void:
+	print(JSON.stringify({
+		"player_level": data.player_level,
+		"experience": data.experience,
+		"coins": data.coins,
+		"stars": data.stars,
+		"reputation": data.reputation,
+		"active_order_id": data.active_order_id,
+		"visible_order_ids": data.visible_order_ids,
+		"order_statuses": data.order_statuses,
+		"unlocked_recipes": data.unlocked_recipes,
+		"equipment_levels": data.equipment_levels,
+		"ingredients": data.ingredients,
+		"best_level_stars": data.best_level_stars,
+		"session_result": current_session_result,
+	}, "\t"))
 
 
 func debug_print_save() -> void:
@@ -635,6 +798,27 @@ func debug_corrupt_save() -> void:
 	SaveManager.write_corrupted_save_for_debug()
 	data = SaveManager.load_game()
 	_post_load_setup()
+	save_loaded.emit()
+	state_changed.emit()
+
+
+func debug_win_current_level() -> void:
+	if data.active_order_id == "":
+		return
+	var order := catalog.get_order(StringName(data.active_order_id))
+	var moves := order.move_limit if order else 20
+	on_level_won(data.active_order_id, 9999, int(moves * 0.5), moves)
+
+
+func debug_lose_current_level() -> void:
+	if data.active_order_id == "":
+		return
+	on_level_lost(data.active_order_id)
+
+
+func debug_set_moves_remaining(amount: int) -> void:
+	## Hook for gameplay debug; stored for HUD tools to read.
+	current_session_result["debug_moves_remaining"] = amount
 	state_changed.emit()
 
 
@@ -739,7 +923,7 @@ func debug_reset_workers_only() -> void:
 # ---------------------------------------------------------------------------
 
 func _ensure_order_board() -> void:
-	# Drop visible orders that require locked recipes (unless already in progress/ready).
+	# Keep active / ready / failed orders; fill remaining slots with available (not locked) orders.
 	var kept: Array[String] = []
 	for id in data.visible_order_ids:
 		var order := catalog.get_order(StringName(id))
@@ -749,11 +933,16 @@ func _ensure_order_board() -> void:
 		if status in [SaveData.OrderStatus.READY_TO_COMPLETE, SaveData.OrderStatus.LEVEL_IN_PROGRESS, SaveData.OrderStatus.SELECTED, SaveData.OrderStatus.FAILED]:
 			kept.append(id)
 			continue
-		if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
+		if status == SaveData.OrderStatus.LOCKED:
 			continue
-		if status == SaveData.OrderStatus.COMPLETED:
+		if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
+			data.order_statuses[id] = SaveData.OrderStatus.LOCKED
+			continue
+		if status == SaveData.OrderStatus.COMPLETED or is_order_reward_claimed(id):
 			continue
 		kept.append(id)
+		if not data.order_statuses.has(id):
+			data.order_statuses[id] = SaveData.OrderStatus.AVAILABLE
 	data.visible_order_ids = kept
 	while data.visible_order_ids.size() < 3:
 		var next_id := _pick_next_available_order()
@@ -762,6 +951,15 @@ func _ensure_order_board() -> void:
 		data.visible_order_ids.append(next_id)
 		if not data.order_statuses.has(next_id):
 			data.order_statuses[next_id] = SaveData.OrderStatus.AVAILABLE
+	# Track locked recipe orders so UI can surface unlock requirements.
+	for id_name in catalog.order_sequence:
+		var id := str(id_name)
+		var order := catalog.get_order(id_name)
+		if order == null:
+			continue
+		if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
+			if not data.order_statuses.has(id) or int(data.order_statuses[id]) == SaveData.OrderStatus.AVAILABLE:
+				data.order_statuses[id] = SaveData.OrderStatus.LOCKED
 
 
 func _replace_visible_order(order_id: String) -> void:
@@ -781,13 +979,15 @@ func _pick_next_available_order() -> String:
 			continue
 		if id in data.completed_order_ids:
 			continue
+		if is_order_reward_claimed(id):
+			continue
 		var order := catalog.get_order(id_name)
 		if order == null:
 			continue
 		if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
 			continue
 		var status := get_order_status(id)
-		if status == SaveData.OrderStatus.COMPLETED:
+		if status == SaveData.OrderStatus.COMPLETED or status == SaveData.OrderStatus.LOCKED:
 			continue
 		return id
 	# Recycle completed pool for endless prototype play, excluding locked recipes.
@@ -800,9 +1000,9 @@ func _pick_next_available_order() -> String:
 			continue
 		if order.requires_recipe_unlocked and not is_recipe_unlocked(order.recipe_id):
 			continue
-		# Allow reappearing after completion for prototype longevity.
 		if id in data.completed_order_ids:
 			data.completed_order_ids.erase(id)
+			data.order_reward_claimed.erase(id)
 			data.order_statuses[id] = SaveData.OrderStatus.AVAILABLE
 			data.order_level_results.erase(id)
 			return id

@@ -55,16 +55,16 @@ func get_level(level_id: String) -> LevelConfig:
 
 func _build_ingredients() -> void:
 	var defs := [
-		[&"chocolate", "Chocolate", Color(0.36, 0.23, 0.13), 10],
-		[&"strawberries", "Strawberries", Color(0.86, 0.27, 0.35), 10],
-		[&"flour", "Flour", Color(0.93, 0.9, 0.82), 10],
-		[&"sugar", "Sugar", Color(0.95, 0.95, 0.95), 10],
-		[&"cream", "Cream", Color(0.98, 0.94, 0.88), 5],
+		[&"chocolate", "Chocolate", Color(0.36, 0.23, 0.13), 5],
+		[&"strawberries", "Strawberries", Color(0.86, 0.27, 0.35), 5],
+		[&"flour", "Flour", Color(0.93, 0.9, 0.82), 5],
+		[&"sugar", "Sugar", Color(0.95, 0.95, 0.95), 5],
+		[&"cream", "Cream", Color(0.98, 0.94, 0.88), 3],
 		[&"grapes", "Grapes", Color(0.55, 0.3, 0.65), 0],
 		[&"caramel", "Caramel", Color(0.78, 0.5, 0.2), 0],
 		[&"cookies", "Cookies", Color(0.72, 0.5, 0.28), 0],
 		[&"cheesecake_filling", "Cheesecake Filling", Color(0.96, 0.92, 0.75), 0],
-		[&"packaging", "Packaging", Color(0.7, 0.78, 0.85), 5],
+		[&"packaging", "Packaging", Color(0.7, 0.78, 0.85), 3],
 	]
 	for d in defs:
 		var item := IngredientData.new()
@@ -95,7 +95,7 @@ func _add_equipment(id: StringName, name: String, type: EquipmentData.EquipmentT
 	eq.equipment_id = id
 	eq.display_name = name
 	eq.equipment_type = type
-	eq.max_level = 5
+	eq.max_level = 3
 	eq.starting_level = 1
 	eq.stage_labels.assign(stages)
 	eq.benefit_description = benefit
@@ -107,14 +107,6 @@ func _build_recipes() -> void:
 		"Ripe strawberries dipped in glossy chocolate.",
 		RecipeData.Category.FRUIT_TREATS, RecipeData.Rarity.COMMON, true,
 		1, 0, 0, 120, {&"chocolate": 2, &"strawberries": 3}, Color(0.75, 0.25, 0.35))
-	_add_recipe(&"chocolate_cupcakes", "Chocolate Cupcakes",
-		"Rich chocolate cupcakes with soft frosting.",
-		RecipeData.Category.CUPCAKES, RecipeData.Rarity.COMMON, true,
-		1, 0, 0, 150, {&"flour": 2, &"chocolate": 2, &"cream": 1}, Color(0.45, 0.28, 0.2))
-	_add_recipe(&"classic_pastries", "Classic Pastries",
-		"Buttery bakery classics fresh from the oven.",
-		RecipeData.Category.COOKIES, RecipeData.Rarity.COMMON, true,
-		1, 0, 0, 140, {&"flour": 2, &"sugar": 2, &"cookies": 1}, Color(0.9, 0.7, 0.45))
 	_add_recipe(&"classic_cupcakes", "Classic Cupcakes",
 		"Soft vanilla cupcakes with swirled frosting.",
 		RecipeData.Category.CUPCAKES, RecipeData.Rarity.COMMON, true,
@@ -127,6 +119,15 @@ func _build_recipes() -> void:
 		"Cupcakes folded with crushed cookies and cream.",
 		RecipeData.Category.CUPCAKES, RecipeData.Rarity.UNCOMMON, false,
 		3, 6, 500, 220, {&"flour": 2, &"cookies": 2, &"cream": 2}, Color(0.85, 0.85, 0.9))
+	# Extra recipes remain locked content placeholders for later phases.
+	_add_recipe(&"chocolate_cupcakes", "Chocolate Cupcakes",
+		"Rich chocolate cupcakes with soft frosting.",
+		RecipeData.Category.CUPCAKES, RecipeData.Rarity.COMMON, false,
+		2, 2, 200, 150, {&"flour": 2, &"chocolate": 2, &"cream": 1}, Color(0.45, 0.28, 0.2))
+	_add_recipe(&"classic_pastries", "Classic Pastries",
+		"Buttery bakery classics fresh from the oven.",
+		RecipeData.Category.COOKIES, RecipeData.Rarity.COMMON, false,
+		2, 2, 200, 140, {&"flour": 2, &"sugar": 2, &"cookies": 1}, Color(0.9, 0.7, 0.45))
 	_add_recipe(&"caramel_donuts", "Caramel Donuts",
 		"Warm donuts glazed with rich caramel.",
 		RecipeData.Category.DONUTS, RecipeData.Rarity.RARE, false,
@@ -161,29 +162,32 @@ func _add_recipe(id: StringName, name: String, desc: String, cat: RecipeData.Cat
 
 func _build_levels() -> void:
 	var piece_types := _load_piece_types()
-	# Code fallbacks, then prefer .tres files when valid.
+	# Code-defined board templates. Order overrides move/objectives at start time.
+	# Prefer validated .tres files when present, but keep code defaults for order IDs.
 	levels["level_01"] = _make_level("level_01", "Strawberry Rush", 20, piece_types, [
 		_obj(&"strawberry", 20, "Collect 20 strawberries")
 	])
-	levels["level_02"] = _make_level("level_02", "Chocolate Crowds", 22, piece_types, [
+	levels["level_02"] = _make_level("level_02", "Cupcake Crowds", 22, piece_types, [
+		_obj(&"cupcake", 22, "Collect 22 cupcakes")
+	])
+	levels["level_03"] = _make_level("level_03", "Chocolate Crowds", 20, piece_types, [
 		_obj(&"chocolate", 25, "Collect 25 chocolate pieces")
 	])
-	levels["level_03"] = _make_level("level_03", "Pastry Batch", 20, piece_types, [
-		_obj(&"cookie", 30, "Collect 30 cookies")
-	])
-	levels["level_04"] = _make_level("level_04", "Cookie & Berry", 24, piece_types, [
-		_obj(&"cookie", 20, "Collect 20 cookies"),
-		_obj(&"strawberry", 15, "Collect 15 strawberries"),
+	levels["level_04"] = _make_level("level_04", "Celebration Batch", 24, piece_types, [
+		_obj(&"cupcake", 18, "Collect 18 cupcakes"),
+		_obj(&"candy", 12, "Collect 12 candy pieces"),
 	])
 	levels["level_05"] = _make_level("level_05", "Candy Crush Hour", 18, piece_types, [
-		_obj(&"candy", 40, "Collect 40 candy pieces")
+		_obj(&"candy", 35, "Collect 35 candy pieces")
 	])
 	for level_id in ["level_01", "level_02", "level_03", "level_04", "level_05"]:
 		var path := "res://resources/levels/%s.tres" % level_id
 		if ResourceLoader.exists(path):
 			var file_level := load(path) as LevelConfig
-			if file_level and file_level.validate():
-				levels[level_id] = file_level
+			# Keep code templates for this vertical slice so order overrides stay authoritative.
+			# Still validate .tres files exist for future art/data work.
+			if file_level == null or not file_level.validate():
+				push_warning("ContentCatalog: level file invalid: %s" % path)
 
 
 func _load_piece_types() -> Array[PieceType]:
@@ -221,54 +225,35 @@ func _make_level(id: String, name: String, moves: int, pieces: Array[PieceType],
 
 
 func _build_orders() -> void:
-	_add_order(&"order_lily", "Lily", &"chocolate_strawberries", "level_01",
-		320, 25, 5, OrderTemplate.Difficulty.EASY,
-		{&"chocolate": 2, &"strawberries": 2}, Color(0.95, 0.55, 0.7),
+	_add_order(&"order_mia_001", "Mia", &"chocolate_strawberries", "level_01",
+		150, 25, 5, OrderTemplate.Difficulty.EASY,
+		{&"strawberries": 2, &"chocolate": 2}, Color(0.95, 0.55, 0.7),
 		&"strawberry", 20, 20, "Collect 20 strawberries",
 		"I need something sweet and fruity!")
-	_add_order(&"order_noah", "Noah", &"chocolate_cupcakes", "level_02",
-		380, 35, 8, OrderTemplate.Difficulty.MEDIUM,
-		{&"flour": 2, &"chocolate": 2}, Color(0.55, 0.65, 0.9),
-		&"chocolate", 25, 22, "Collect 25 chocolate pieces",
-		"Make it chocolatey and rich!")
-	_add_order(&"order_maple", "Mrs. Maple", &"classic_pastries", "level_03",
-		350, 45, 10, OrderTemplate.Difficulty.MEDIUM,
-		{&"flour": 2, &"cookies": 1}, Color(0.85, 0.65, 0.45),
-		&"cookie", 30, 20, "Collect 30 cookies",
-		"Classic never goes out of style.")
-	_add_order(&"order_chris", "Chris", &"classic_cupcakes", "level_04",
+	_add_order(&"order_jordan_002", "Jordan", &"classic_cupcakes", "level_02",
+		200, 35, 7, OrderTemplate.Difficulty.EASY,
+		{&"flour": 2, &"sugar": 2}, Color(0.55, 0.75, 0.95),
+		&"cupcake", 22, 22, "Collect 22 cupcakes",
+		"Cupcakes always make the day better.")
+	_add_order(&"order_taylor_003", "Taylor", &"chocolate_strawberries", "level_03",
+		275, 45, 10, OrderTemplate.Difficulty.MEDIUM,
+		{&"chocolate": 3, &"packaging": 1}, Color(0.55, 0.4, 0.3),
+		&"chocolate", 25, 20, "Collect 25 chocolate pieces",
+		"Make it extra chocolatey.")
+	_add_order(&"order_noah_004", "Noah", &"classic_cupcakes", "level_04",
 		325, 55, 12, OrderTemplate.Difficulty.MEDIUM,
-		{&"flour": 2, &"cookies": 1, &"cream": 1}, Color(0.95, 0.75, 0.45),
-		&"cookie", 20, 24, "Collect 20 cookies",
-		"Surprise me with something classic!")
-	_add_order(&"order_morgan", "Morgan", &"candied_grapes", "level_05",
+		{&"flour": 3, &"cream": 2}, Color(0.55, 0.65, 0.9),
+		&"cupcake", 18, 24, "Collect 18 cupcakes + 12 candy",
+		"I need desserts for a small celebration.",
+		[{"piece_id": &"candy", "amount": 12}])
+	_add_order(&"order_morgan_005", "Morgan", &"candied_grapes", "level_05",
 		450, 75, 18, OrderTemplate.Difficulty.HARD,
-		{&"grapes": 3, &"sugar": 2}, Color(0.65, 0.45, 0.85),
-		&"candy", 40, 18, "Collect 40 candy pieces",
-		"Something sparkly, please!")
-	_add_order(&"order_avery", "Avery", &"chocolate_strawberries", "level_01",
-		160, 28, 6, OrderTemplate.Difficulty.EASY,
-		{&"chocolate": 1, &"strawberries": 2}, Color(0.9, 0.6, 0.5),
-		&"strawberry", 20, 20, "Collect 20 strawberries",
-		"Berry delicious, thank you!")
-	_add_order(&"order_riley", "Riley", &"chocolate_cupcakes", "level_02",
-		210, 38, 8, OrderTemplate.Difficulty.EASY,
-		{&"flour": 2, &"chocolate": 1}, Color(0.5, 0.8, 0.75),
-		&"chocolate", 25, 22, "Collect 25 chocolate pieces",
-		"Chocolate always wins.")
-	_add_order(&"order_sam", "Sam", &"cookies_cream_cupcakes", "level_04",
-		360, 60, 14, OrderTemplate.Difficulty.MEDIUM,
-		{&"cookies": 2, &"cream": 1}, Color(0.8, 0.8, 0.9),
-		&"cookie", 20, 24, "Collect 20 cookies",
-		"Cookies and cream dreams!")
-	_add_order(&"order_casey", "Casey", &"caramel_donuts", "level_05",
-		480, 80, 20, OrderTemplate.Difficulty.HARD,
-		{&"caramel": 2, &"flour": 1}, Color(0.85, 0.55, 0.35),
-		&"candy", 40, 18, "Collect 40 candy pieces",
-		"Caramel for the win!")
+		{&"grapes": 2, &"sugar": 2}, Color(0.65, 0.45, 0.85),
+		&"candy", 35, 18, "Collect 35 candy pieces",
+		"I heard your candied fruit is incredible.")
 	order_sequence = [
-		&"order_lily", &"order_noah", &"order_maple", &"order_chris", &"order_morgan",
-		&"order_avery", &"order_riley", &"order_sam", &"order_casey",
+		&"order_mia_001", &"order_jordan_002", &"order_taylor_003",
+		&"order_noah_004", &"order_morgan_005",
 	]
 
 
@@ -276,7 +261,8 @@ func _add_order(id: StringName, customer: String, recipe_id: StringName, level_i
 		coins: int, xp: int, rep: int, diff: OrderTemplate.Difficulty,
 		ingredients_reward: Dictionary, color: Color,
 		target_piece: StringName = &"", target_amt: int = 0, moves: int = 0,
-		objective_desc: String = "", message: String = "") -> void:
+		objective_desc: String = "", message: String = "",
+		extra_objectives: Array = []) -> void:
 	var order := OrderTemplate.new()
 	order.order_id = id
 	order.customer_name = customer
@@ -294,6 +280,7 @@ func _add_order(id: StringName, customer: String, recipe_id: StringName, level_i
 	order.target_amount = target_amt
 	order.move_limit = moves
 	order.objective_description = objective_desc
+	order.additional_objectives = extra_objectives.duplicate(true)
 	orders[str(id)] = order
 
 

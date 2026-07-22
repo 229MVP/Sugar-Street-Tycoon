@@ -23,6 +23,10 @@ func setup(order: OrderTemplate, status: int) -> void:
 	elif status == SaveData.OrderStatus.FAILED:
 		style.border_color = SugarStreetColors.CORAL_PINK
 		style.set_border_width_all(2)
+	elif status == SaveData.OrderStatus.LOCKED:
+		style.bg_color = Color(0.92, 0.9, 0.88, 1)
+		style.border_color = SugarStreetColors.DISABLED_FILL
+		style.set_border_width_all(2)
 	add_theme_stylebox_override("panel", style)
 
 	var root := VBoxContainer.new()
@@ -35,7 +39,7 @@ func setup(order: OrderTemplate, status: int) -> void:
 
 	var portrait := ColorRect.new()
 	portrait.custom_minimum_size = Vector2(52, 52)
-	portrait.color = order.customer_color
+	portrait.color = order.customer_color if status != SaveData.OrderStatus.LOCKED else order.customer_color.darkened(0.35)
 	header.add_child(portrait)
 	var portrait_label := Label.new()
 	portrait_label.text = order.customer_name.substr(0, 1)
@@ -62,13 +66,20 @@ func setup(order: OrderTemplate, status: int) -> void:
 	info.add_child(msg)
 
 	var recipe := GameState.catalog.get_recipe(order.recipe_id)
+	var preview := GameState.preview_order_rewards(order)
 	_row(root, "Recipe", recipe.display_name if recipe else str(order.recipe_id))
 	_row(root, "Objective", order.objective_text())
 	_row(root, "Moves", str(order.move_limit))
 	_row(root, "Rewards", "%s coins · %d XP · %d rep" % [
-		RewardCalculator.format_coins(order.coin_reward), order.experience_reward, order.reputation_reward
+		RewardCalculator.format_coins(int(preview.get("coins", order.coin_reward))),
+		int(preview.get("experience", order.experience_reward)),
+		int(preview.get("reputation", order.reputation_reward)),
 	])
 	_row(root, "Difficulty", order.difficulty_label())
+	_row(root, "Status", _status_name(status))
+
+	if status == SaveData.OrderStatus.LOCKED:
+		_row(root, "Unlock", order.unlock_requirement_text())
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
@@ -90,23 +101,49 @@ func setup(order: OrderTemplate, status: int) -> void:
 	var action := Button.new()
 	action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action.custom_minimum_size = Vector2(0, 44)
-	if status == SaveData.OrderStatus.READY_TO_COMPLETE:
-		action.text = "Complete Order"
-		ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-		action.pressed.connect(func(): complete_pressed.emit(order_id))
-	elif status == SaveData.OrderStatus.COMPLETED:
-		action.text = "Completed"
-		action.disabled = true
-		ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-	else:
-		action.text = "Start Order"
-		ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-		action.pressed.connect(func(): start_pressed.emit(order_id))
+	match status:
+		SaveData.OrderStatus.READY_TO_COMPLETE:
+			action.text = "Complete Order"
+			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
+			action.pressed.connect(func(): complete_pressed.emit(order_id))
+		SaveData.OrderStatus.COMPLETED:
+			action.text = "Completed"
+			action.disabled = true
+			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
+		SaveData.OrderStatus.LOCKED:
+			action.text = "Locked"
+			action.disabled = true
+			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
+		SaveData.OrderStatus.FAILED:
+			action.text = "Retry Order"
+			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
+			action.pressed.connect(func(): start_pressed.emit(order_id))
+		SaveData.OrderStatus.SELECTED, SaveData.OrderStatus.LEVEL_IN_PROGRESS:
+			action.text = "Continue Order"
+			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
+			action.pressed.connect(func(): start_pressed.emit(order_id))
+		_:
+			action.text = "Start Order"
+			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
+			action.pressed.connect(func(): start_pressed.emit(order_id))
 	actions.add_child(action)
 
 	modulate.a = 0.0
 	var tween := create_tween()
 	tween.tween_property(self, "modulate:a", 1.0, 0.2)
+
+
+func _status_name(status: int) -> String:
+	match status:
+		SaveData.OrderStatus.AVAILABLE: return "Available"
+		SaveData.OrderStatus.SELECTED: return "Selected"
+		SaveData.OrderStatus.LEVEL_IN_PROGRESS: return "In Progress"
+		SaveData.OrderStatus.READY_TO_COMPLETE: return "Ready to Complete"
+		SaveData.OrderStatus.COMPLETED: return "Completed"
+		SaveData.OrderStatus.FAILED: return "Failed"
+		SaveData.OrderStatus.LOCKED: return "Locked"
+		SaveData.OrderStatus.EXPIRED: return "Expired"
+	return "Unknown"
 
 
 func _row(parent: Control, key: String, value: String) -> void:

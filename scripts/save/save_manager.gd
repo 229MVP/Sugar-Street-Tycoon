@@ -106,8 +106,12 @@ static func _to_dict(data: SaveData) -> Dictionary:
 		"ingredients": _stringify_keys(data.ingredients),
 		"best_level_stars": data.best_level_stars.duplicate(true),
 		"best_level_scores": data.best_level_scores.duplicate(true),
+		"best_order_stars": data.best_order_stars.duplicate(true),
+		"best_order_scores": data.best_order_scores.duplicate(true),
+		"granted_level_stars": data.granted_level_stars.duplicate(true),
 		"order_statuses": _stringify_keys(data.order_statuses),
 		"order_level_results": _stringify_keys(data.order_level_results),
+		"order_reward_claimed": _stringify_keys(data.order_reward_claimed),
 		"completed_order_ids": data.completed_order_ids.duplicate(),
 		"active_order_id": data.active_order_id,
 		"selected_order_id": data.active_order_id,
@@ -143,13 +147,21 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	data.ingredients = _merge_dict(data.ingredients, dict.get("ingredients", {}))
 	data.best_level_stars = dict.get("best_level_stars", {}).duplicate(true) if typeof(dict.get("best_level_stars", {})) == TYPE_DICTIONARY else {}
 	data.best_level_scores = dict.get("best_level_scores", {}).duplicate(true) if typeof(dict.get("best_level_scores", {})) == TYPE_DICTIONARY else {}
+	data.best_order_stars = dict.get("best_order_stars", {}).duplicate(true) if typeof(dict.get("best_order_stars", {})) == TYPE_DICTIONARY else {}
+	data.best_order_scores = dict.get("best_order_scores", {}).duplicate(true) if typeof(dict.get("best_order_scores", {})) == TYPE_DICTIONARY else {}
+	data.granted_level_stars = dict.get("granted_level_stars", {}).duplicate(true) if typeof(dict.get("granted_level_stars", {})) == TYPE_DICTIONARY else {}
 	data.order_statuses = _merge_dict({}, dict.get("order_statuses", {}))
 	data.order_level_results = _merge_dict({}, dict.get("order_level_results", {}))
+	data.order_reward_claimed = _merge_dict({}, dict.get("order_reward_claimed", {}))
 	var completed: Variant = dict.get("completed_order_ids", [])
 	data.completed_order_ids = []
 	if typeof(completed) == TYPE_ARRAY:
 		for item in completed:
 			data.completed_order_ids.append(str(item))
+	# Backfill reward-claimed for already completed orders from older saves.
+	for cid in data.completed_order_ids:
+		if not data.order_reward_claimed.has(cid):
+			data.order_reward_claimed[cid] = true
 	data.active_order_id = str(dict.get("active_order_id", dict.get("selected_order_id", "")))
 	var visible: Variant = dict.get("visible_order_ids", [])
 	data.visible_order_ids = []
@@ -176,9 +188,18 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	if old_version < 2 or data.worker_save_version < 1:
 		if OS.is_debug_build():
 			print("SaveManager: migrating save v%d → worker system defaults" % old_version)
-		data.apply_worker_defaults()
-	else:
-		data.apply_worker_defaults()
+	if old_version < 3:
+		if OS.is_debug_build():
+			print("SaveManager: migrating save v%d → vertical-slice v3 (Mia orders / reward claims)" % old_version)
+		# Drop obsolete visible order IDs from earlier catalogs; board rebuilds on load.
+		var cleaned: Array[String] = []
+		for oid in data.visible_order_ids:
+			if str(oid).begins_with("order_mia") or str(oid).begins_with("order_jordan") \
+					or str(oid).begins_with("order_taylor") or str(oid).begins_with("order_noah_004") \
+					or str(oid).begins_with("order_morgan_005"):
+				cleaned.append(oid)
+		data.visible_order_ids = cleaned
+	data.apply_worker_defaults()
 
 	data.version = SaveData.SAVE_VERSION
 	return data

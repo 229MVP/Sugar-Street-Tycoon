@@ -76,7 +76,11 @@ func show_order(order: OrderTemplate, status: int) -> void:
 	_title.text = "Order from %s" % order.customer_name
 	var rewards := GameState.preview_order_rewards(order) if GameState.has_method("preview_order_rewards") else RewardCalculator.compute_order_rewards(order, GameState.data)
 	var message := order.customer_message if order.customer_message != "" else "Please help with my order!"
-	_body.text = "“%s”\n\nRecipe: %s\nObjective: %s\nMoves: %d\nDifficulty: %s\n\nRewards:\nCoins: %s\nXP: %d\nReputation: %d\n\nStatus: %s" % [
+	var ingredient_lines: PackedStringArray = []
+	for ing_id in order.ingredient_rewards.keys():
+		ingredient_lines.append("%s x%d" % [str(ing_id).capitalize(), int(order.ingredient_rewards[ing_id])])
+	var ingredients_text := ", ".join(ingredient_lines) if not ingredient_lines.is_empty() else "None"
+	_body.text = "“%s”\n\nRecipe: %s\nObjective: %s\nMoves: %d\nDifficulty: %s\n\nRewards:\nCoins: %s\nXP: %d\nReputation: %d\nIngredients: %s\n\nStatus: %s" % [
 		message,
 		recipe.display_name if recipe else str(order.recipe_id),
 		order.objective_text(),
@@ -85,11 +89,25 @@ func show_order(order: OrderTemplate, status: int) -> void:
 		RewardCalculator.format_coins(int(rewards.get("coins", order.coin_reward))),
 		int(rewards.get("experience", order.experience_reward)),
 		int(rewards.get("reputation", order.reputation_reward)),
+		ingredients_text,
 		_status_name(status),
 	]
+	if status == SaveData.OrderStatus.LOCKED:
+		_body.text += "\n\n%s" % order.unlock_requirement_text()
 	_complete.visible = status == SaveData.OrderStatus.READY_TO_COMPLETE
-	_start.visible = status != SaveData.OrderStatus.READY_TO_COMPLETE and status != SaveData.OrderStatus.COMPLETED
-	_start.text = "Retry Level" if status == SaveData.OrderStatus.FAILED else "Start Order"
+	_start.visible = status not in [
+		SaveData.OrderStatus.READY_TO_COMPLETE,
+		SaveData.OrderStatus.COMPLETED,
+		SaveData.OrderStatus.LOCKED,
+	]
+	_start.disabled = status == SaveData.OrderStatus.LOCKED
+	match status:
+		SaveData.OrderStatus.FAILED:
+			_start.text = "Retry Order"
+		SaveData.OrderStatus.SELECTED, SaveData.OrderStatus.LEVEL_IN_PROGRESS:
+			_start.text = "Continue Order"
+		_:
+			_start.text = "Start Order"
 	visible = true
 	AudioManager.play_popup()
 
@@ -102,9 +120,10 @@ func _status_name(status: int) -> String:
 	match status:
 		SaveData.OrderStatus.AVAILABLE: return "Available"
 		SaveData.OrderStatus.SELECTED: return "Selected"
-		SaveData.OrderStatus.LEVEL_IN_PROGRESS: return "Level In Progress"
+		SaveData.OrderStatus.LEVEL_IN_PROGRESS: return "In Progress"
 		SaveData.OrderStatus.READY_TO_COMPLETE: return "Ready to Complete"
 		SaveData.OrderStatus.COMPLETED: return "Completed"
 		SaveData.OrderStatus.FAILED: return "Failed"
+		SaveData.OrderStatus.LOCKED: return "Locked"
 		SaveData.OrderStatus.EXPIRED: return "Expired"
 	return "Unknown"
