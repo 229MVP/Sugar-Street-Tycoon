@@ -82,6 +82,36 @@ enum OrderStatus {
 }
 
 
+## Canonical starter pantry. Keys are always plain Strings for save stability.
+static func starter_ingredients() -> Dictionary:
+	return {
+		"chocolate": 5,
+		"strawberries": 5,
+		"flour": 5,
+		"sugar": 5,
+		"cream": 3,
+		"grapes": 0,
+		"caramel": 0,
+		"cookies": 0,
+		"cheesecake_filling": 0,
+		"packaging": 3,
+	}
+
+
+## Add missing ingredient keys from the starter template without overwriting valid amounts.
+## Clamps negatives to zero. Does not refill an intentional all-zero pantry.
+static func ensure_ingredient_keys(ingredients: Dictionary) -> Dictionary:
+	var out := {}
+	# Normalize existing keys to String and clamp.
+	for key in ingredients.keys():
+		out[str(key)] = maxi(0, int(ingredients[key]))
+	var starter := starter_ingredients()
+	for key in starter.keys():
+		if not out.has(key):
+			out[key] = int(starter[key])
+	return out
+
+
 static func create_default() -> SaveData:
 	var data := SaveData.new()
 	data.version = SAVE_VERSION
@@ -120,18 +150,7 @@ static func create_default() -> SaveData:
 		&"display_case": 1,
 		&"checkout": 1,
 	}
-	data.ingredients = {
-		&"chocolate": 5,
-		&"strawberries": 5,
-		&"flour": 5,
-		&"sugar": 5,
-		&"cream": 3,
-		&"grapes": 0,
-		&"caramel": 0,
-		&"cookies": 0,
-		&"cheesecake_filling": 0,
-		&"packaging": 3,
-	}
+	data.ingredients = starter_ingredients()
 	data.order_statuses = {}
 	data.order_level_results = {}
 	data.order_reward_claimed = {}

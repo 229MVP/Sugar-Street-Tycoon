@@ -2,7 +2,7 @@ class_name SugarStreetColors
 extends RefCounted
 ## Design tokens for Sugar Street Tycoon bakery UI.
 
-const WARM_CREAM := Color("#FFF4E8")
+const WARM_CREAM := Color("#FFF5E8")
 const SOFT_IVORY := Color("#FFF9F2")
 const CORAL_PINK := Color("#E97076")
 const STRAWBERRY_PINK := Color("#F48A9C")

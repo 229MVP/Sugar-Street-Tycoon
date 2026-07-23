@@ -39,6 +39,7 @@ func _ready() -> void:
 	_btn(vbox, "Corrupt Decor Save", func(): GameState.debug_corrupt_decoration_save())
 	_btn(vbox, "Test Decor Repair", func(): GameState.debug_test_decoration_repair())
 	_btn(vbox, "Reset Decor Only", func(): GameState.debug_reset_decorations_only())
+	_btn(vbox, "Reset Inventory to Starter", func(): GameState.reset_inventory_to_starter())
 	_btn(vbox, "Reset Orders", func(): GameState.debug_reset_orders())
 	_btn(vbox, "Print GameState", func(): GameState.debug_print_gamestate())
 	_btn(vbox, "Print Save", func(): GameState.debug_print_save())

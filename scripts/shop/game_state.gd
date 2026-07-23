@@ -28,9 +28,12 @@ signal decoration_placed(slot_id: StringName, decoration_id: StringName)
 signal decoration_removed(slot_id: StringName, decoration_id: StringName)
 signal shop_level_upgraded(new_level: int)
 signal appeal_changed(appeal: int, tier: String)
+signal inventory_changed(ingredients: Dictionary)
 
 ## True in editor / debug builds only. Production exports hide debug panels.
 const DEBUG_TOOLS_ENABLED := true
+## Placeholder energy counter shown in the top bar (no full energy system yet).
+const ENERGY_PLACEHOLDER := 5
 
 var catalog := ContentCatalog.new()
 var decor_catalog := DecorationCatalog.new()
@@ -56,6 +59,7 @@ func _ready() -> void:
 	_post_load_setup()
 	_apply_audio_settings()
 	save_loaded.emit()
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	emit_signal("state_changed")
 
 
@@ -67,6 +71,7 @@ func _post_load_setup() -> void:
 		for msg in decor_logs:
 			print("DecorationManager repair: ", msg)
 	_previous_appeal_tier = str(data.shop_appeal_tier)
+	_ensure_ingredients()
 	_ensure_order_board()
 	# Passive/offline systems remain in code for migration but are not exposed this phase.
 	OfflineEarningsCalculator.mark_session_active(data)
@@ -95,6 +100,7 @@ func new_game() -> void:
 	_apply_audio_settings()
 	save_now()
 	save_loaded.emit()
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	state_changed.emit()
 
 
@@ -103,6 +109,7 @@ func continue_game() -> void:
 	_post_load_setup()
 	_apply_audio_settings()
 	save_loaded.emit()
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	state_changed.emit()
 
 
@@ -165,7 +172,47 @@ func get_equipment_level(equipment_id: StringName) -> int:
 
 
 func get_ingredient_amount(ingredient_id: StringName) -> int:
-	return int(data.ingredients.get(str(ingredient_id), 0))
+	if data == null:
+		return 0
+	_ensure_ingredients()
+	var key := str(ingredient_id)
+	var amount := 0
+	if data.ingredients.has(key):
+		amount = int(data.ingredients[key])
+	elif data.ingredients.has(ingredient_id):
+		amount = int(data.ingredients[ingredient_id])
+	return maxi(0, amount)
+
+
+func get_energy_display() -> int:
+	if data == null:
+		return ENERGY_PLACEHOLDER
+	return maxi(0, int(data.settings.get("energy_placeholder", ENERGY_PLACEHOLDER)))
+
+
+func get_total_ingredient_units() -> int:
+	_ensure_ingredients()
+	var total := 0
+	for key in data.ingredients.keys():
+		total += maxi(0, int(data.ingredients[key]))
+	return total
+
+
+func reset_inventory_to_starter() -> void:
+	## Development helper — restores the New Game pantry.
+	data.ingredients = SaveData.starter_ingredients()
+	save_now()
+	inventory_changed.emit(data.ingredients.duplicate(true))
+	state_changed.emit()
+
+
+func _ensure_ingredients() -> void:
+	if data == null:
+		return
+	if data.ingredients == null or typeof(data.ingredients) != TYPE_DICTIONARY:
+		data.ingredients = SaveData.starter_ingredients()
+		return
+	data.ingredients = SaveData.ensure_ingredient_keys(data.ingredients)
 
 
 func get_order_status(order_id: String) -> int:
@@ -450,6 +497,7 @@ func complete_order(order_id: String) -> Dictionary:
 	data.reputation += int(rewards["reputation"])
 	data.stars += permanent_stars
 	data.granted_level_stars[level_id] = already_granted + permanent_stars
+	_ensure_ingredients()
 	for ing_id in rewards["ingredients"].keys():
 		var add_amt := int(rewards["ingredients"][ing_id])
 		var key := str(ing_id)
@@ -491,6 +539,7 @@ func complete_order(order_id: String) -> Dictionary:
 	stars_changed.emit(data.stars)
 	reputation_changed.emit(data.reputation)
 	experience_changed.emit(data.experience, PlayerProgression.xp_required_for_next_level(data.player_level), data.player_level)
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	order_status_changed.emit(order_id, SaveData.OrderStatus.COMPLETED)
 	order_updated.emit(order_id)
 	notifications_changed.emit()
