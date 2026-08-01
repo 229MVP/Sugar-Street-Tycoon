@@ -397,8 +397,25 @@ func recipe_unlock_available_count() -> int:
 
 func affordable_upgrade_count() -> int:
 	var count := 0
+	if upgrades:
+		for id in upgrades.all_upgrade_ids():
+			if upgrades.can_purchase(id).get("ok", false):
+				count += 1
+		return count
 	for id in catalog.equipment.keys():
 		if can_upgrade_equipment(StringName(id)).get("ok", false):
+			count += 1
+	return count
+
+
+func affordable_worker_action_count() -> int:
+	## Convenience badge helper: hireable OR upgradeable workers.
+	var count := 0
+	for id in workers.all_worker_ids():
+		if can_hire_worker(StringName(id)).get("ok", false):
+			count += 1
+			continue
+		if is_worker_hired(StringName(id)) and can_upgrade_worker(StringName(id)).get("ok", false):
 			count += 1
 	return count
 
