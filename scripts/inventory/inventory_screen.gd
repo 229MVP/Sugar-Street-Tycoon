@@ -13,8 +13,8 @@ const CORAL := Color("#E97076")
 
 const CATEGORY_ORDER: Array[Dictionary] = [
 	{"id": "fruit", "label": "Fruit", "ids": ["strawberries", "grapes"]},
-	{"id": "baking", "label": "Baking", "ids": ["flour", "sugar", "cream", "cheesecake_filling"]},
-	{"id": "flavoring", "label": "Flavoring", "ids": ["chocolate", "caramel", "cookies"]},
+	{"id": "baking", "label": "Baking", "ids": ["flour", "sugar", "cream", "cheesecake_filling", "butter"]},
+	{"id": "flavoring", "label": "Flavoring", "ids": ["chocolate", "caramel", "cookies", "vanilla"]},
 	{"id": "supplies", "label": "Supplies", "ids": ["packaging"]},
 ]
 

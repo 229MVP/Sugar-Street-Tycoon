@@ -11,11 +11,6 @@ const CORAL := Color("#E97076")
 const MINT := Color("#86C8AE")
 const LOCKED_GRAY := Color("#817671")
 
-const RECIPE_IDS: Array[StringName] = [
-	&"chocolate_strawberries", &"classic_cupcakes", &"candied_grapes",
-	&"cookies_cream_cupcakes", &"caramel_donuts",
-]
-
 var _list: HBoxContainer
 var _scroll: ScrollContainer
 var _details_panel: PanelContainer
@@ -23,6 +18,7 @@ var _details_label: Label
 var _select_hint: Label
 var _coin_label: Label
 var _unlock_btn: Button
+var _craft_btn: Button
 var _empty_label: Label
 var _empty_actions: HBoxContainer
 var _confirm: ConfirmPopup
@@ -167,13 +163,27 @@ func _build_shell() -> void:
 	_details_label.text = "Choose a recipe card above to see details, requirements, and unlock options."
 	details_scroll.add_child(_details_label)
 
+	var action_row := HBoxContainer.new()
+	action_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(action_row)
+
 	_unlock_btn = Button.new()
 	_unlock_btn.text = "Unlock"
 	_unlock_btn.custom_minimum_size = Vector2(0, 48)
+	_unlock_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_unlock_btn.disabled = true
 	ThemeFactory.apply_button_styles(_unlock_btn, ThemeFactory.primary_button_styles())
 	_unlock_btn.pressed.connect(_on_unlock_pressed)
-	vbox.add_child(_unlock_btn)
+	action_row.add_child(_unlock_btn)
+
+	_craft_btn = Button.new()
+	_craft_btn.text = "Craft"
+	_craft_btn.custom_minimum_size = Vector2(0, 48)
+	_craft_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_craft_btn.disabled = true
+	ThemeFactory.apply_button_styles(_craft_btn, ThemeFactory.soft_button_styles(), BROWN)
+	_craft_btn.pressed.connect(_on_craft_pressed)
+	action_row.add_child(_craft_btn)
 
 	var nav := BottomNavigation.new()
 	nav.selected_tab = BottomNavigation.TAB_RECIPES
@@ -195,6 +205,10 @@ func _wire_game_signals() -> void:
 		GameState.coins_changed.connect(_on_coins_changed)
 	if not GameState.recipe_unlocked.is_connected(_on_recipe_unlocked):
 		GameState.recipe_unlocked.connect(_on_recipe_unlocked)
+	if not GameState.recipes.recipe_crafted.is_connected(_on_recipe_crafted):
+		GameState.recipes.recipe_crafted.connect(_on_recipe_crafted)
+	if not GameState.inventory.inventory_changed.is_connected(_on_inventory_changed):
+		GameState.inventory.inventory_changed.connect(_on_inventory_changed)
 
 
 func _on_coins_changed(_amount: int) -> void:
@@ -204,6 +218,14 @@ func _on_coins_changed(_amount: int) -> void:
 
 func _on_recipe_unlocked(_recipe_id: StringName) -> void:
 	_safe_rebuild()
+
+
+func _on_recipe_crafted(_recipe_id: String, _rewards: Dictionary) -> void:
+	_update_details()
+
+
+func _on_inventory_changed(_snapshot: Dictionary) -> void:
+	_update_details()
 
 
 func _safe_rebuild() -> void:
@@ -238,9 +260,11 @@ func _rebuild() -> void:
 		_rebuilding = false
 		return
 
+	var recipe_ids: Array[String] = GameState.recipes.all_recipe_ids() if GameState.recipes else []
 	var missing: Array = []
 	_cards_created = 0
-	for id in RECIPE_IDS:
+	for id_str in recipe_ids:
+		var id := StringName(id_str)
 		var recipe := GameState.catalog.get_recipe(id)
 		if recipe == null:
 			missing.append(str(id))
@@ -266,7 +290,7 @@ func _rebuild() -> void:
 
 	if OS.is_debug_build():
 		print("RecipeBook: definitions=%d cards=%d selected=%s missing=%s parent=%s" % [
-			RECIPE_IDS.size(), _cards_created, str(_selected_id), missing,
+			recipe_ids.size(), _cards_created, str(_selected_id), missing,
 			str(_list.get_path()) if is_inside_tree() else "RecipeList",
 		])
 		if empty:
@@ -281,6 +305,7 @@ func _show_empty(empty: bool) -> void:
 	_scroll.visible = not empty
 	_details_panel.visible = not empty
 	_unlock_btn.visible = not empty
+	_craft_btn.visible = not empty
 	_select_hint.visible = not empty
 
 
@@ -308,12 +333,15 @@ func _update_details() -> void:
 		_details_label.add_theme_color_override("font_color", BROWN)
 		_unlock_btn.text = "Unlock"
 		_unlock_btn.disabled = true
+		_craft_btn.text = "Craft"
+		_craft_btn.disabled = true
 		return
 
 	var recipe := GameState.catalog.get_recipe(_selected_id)
 	if recipe == null:
 		_details_label.text = "Recipe data missing."
 		_unlock_btn.disabled = true
+		_craft_btn.disabled = true
 		return
 
 	var unlocked := GameState.is_recipe_unlocked(recipe.recipe_id)
@@ -338,16 +366,39 @@ func _update_details() -> void:
 		for iid in recipe.ingredient_requirements.keys():
 			parts.append("%s×%s" % [str(recipe.ingredient_requirements[iid]), str(iid)])
 		lines.append("Ingredients: %s" % ", ".join(parts))
+
+	var def := GameState.recipes.get_definition(str(_selected_id))
+	if def and unlocked:
+		lines.append("")
+		lines.append("Craft cost: %s" % _format_costs(def.craft_ingredient_costs))
+		lines.append("Craft reward: %s coins · %d XP · %d rep" % [
+			RewardCalculator.format_coins(def.craft_coin_reward), def.craft_xp_reward, def.craft_reputation_reward,
+		])
+		var crafted := GameState.crafted_recipe_count(recipe.recipe_id)
+		if crafted > 0:
+			lines.append("Crafted so far: %d" % crafted)
 	_details_label.text = "\n".join(lines)
 	_details_label.add_theme_color_override("font_color", BROWN)
 
 	if unlocked:
 		_unlock_btn.text = "Unlocked"
 		_unlock_btn.disabled = true
+		var craft_check := GameState.can_craft_recipe(recipe.recipe_id)
+		_craft_btn.text = "Craft"
+		_craft_btn.disabled = not craft_check.get("ok", false)
 	else:
 		var check := GameState.can_unlock_recipe(recipe.recipe_id)
 		_unlock_btn.text = "Unlock for %s" % RewardCalculator.format_coins(recipe.unlock_coin_cost)
 		_unlock_btn.disabled = not check.get("ok", false)
+		_craft_btn.text = "Craft"
+		_craft_btn.disabled = true
+
+
+func _format_costs(costs: Dictionary) -> String:
+	var parts: PackedStringArray = []
+	for iid in costs.keys():
+		parts.append("%s×%s" % [str(costs[iid]), str(iid)])
+	return ", ".join(parts) if not parts.is_empty() else "Free"
 
 
 func _on_unlock_pressed() -> void:
@@ -377,4 +428,23 @@ func _do_unlock(recipe_id: StringName = &"") -> void:
 		_safe_rebuild()
 	else:
 		_details_label.text = str(result.get("reason", "Could not unlock."))
+		_details_label.add_theme_color_override("font_color", CORAL)
+
+
+func _on_craft_pressed() -> void:
+	if _selected_id == &"":
+		return
+	var result := GameState.craft_recipe(_selected_id)
+	if result.get("ok", false):
+		AudioManager.play(AudioManager.Sfx.RECIPE_UNLOCKED)
+		var rewards: Dictionary = result.get("rewards", {})
+		_details_label.text = "Crafted! +%s coins · +%d XP · +%d rep." % [
+			RewardCalculator.format_coins(int(rewards.get("coins", 0))),
+			int(rewards.get("experience", 0)),
+			int(rewards.get("reputation", 0)),
+		]
+		_details_label.add_theme_color_override("font_color", MINT)
+		_update_details()
+	else:
+		_details_label.text = str(result.get("reason", "Could not craft."))
 		_details_label.add_theme_color_override("font_color", CORAL)
