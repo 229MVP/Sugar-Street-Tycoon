@@ -2,9 +2,10 @@ class_name SaveData
 extends Resource
 ## Serializable player / shop progress. Versioned for forward-compatible loads.
 
-const SAVE_VERSION := 4
+const SAVE_VERSION := 5
 const WORKER_SAVE_VERSION := 1
 const DECORATION_SAVE_VERSION := 1
+const UPGRADE_SAVE_VERSION := 1
 
 enum OrderStatus {
 	AVAILABLE,
@@ -44,6 +45,13 @@ enum OrderStatus {
 @export var unlocked_recipes: Dictionary = {}
 @export var equipment_levels: Dictionary = {}
 @export var ingredients: Dictionary = {}
+## Non-consumable pantry items (currently unused placeholders for future tools).
+@export var tools: Dictionary = {}
+## New data-driven upgrade system (Oven/Mixer/Display Case/Cash Register/Decor/Lighting).
+@export var upgrade_save_version: int = UPGRADE_SAVE_VERSION
+@export var upgrade_levels: Dictionary = {} ## upgrade_id -> level
+## Lifetime crafted-item counters from the Recipe Book craft action.
+@export var crafted_items: Dictionary = {} ## recipe_id -> count
 @export var best_level_stars: Dictionary = {}
 @export var best_level_scores: Dictionary = {}
 @export var best_order_stars: Dictionary = {}
@@ -95,6 +103,20 @@ static func starter_ingredients() -> Dictionary:
 		"cookies": 0,
 		"cheesecake_filling": 0,
 		"packaging": 3,
+		"butter": 2,
+		"vanilla": 1,
+	}
+
+
+## Canonical starter upgrade levels. Keys are always plain Strings for save stability.
+static func starter_upgrade_levels() -> Dictionary:
+	return {
+		"oven": 1,
+		"mixer": 1,
+		"display_case": 1,
+		"cash_register": 1,
+		"decor": 1,
+		"lighting": 1,
 	}
 
 
@@ -150,7 +172,11 @@ static func create_default() -> SaveData:
 		&"display_case": 1,
 		&"checkout": 1,
 	}
+	data.upgrade_save_version = UPGRADE_SAVE_VERSION
+	data.upgrade_levels = starter_upgrade_levels()
 	data.ingredients = starter_ingredients()
+	data.tools = {}
+	data.crafted_items = {}
 	data.order_statuses = {}
 	data.order_level_results = {}
 	data.order_reward_claimed = {}
@@ -165,7 +191,7 @@ static func create_default() -> SaveData:
 	data.hired_workers = {}
 	data.worker_levels = {}
 	data.worker_assignments = {}
-	data.worker_unlock_flags = {"ava": true}
+	data.worker_unlock_flags = {"lily": true}
 	data.stored_passive_coins = 0.0
 	var now := int(Time.get_unix_time_from_system())
 	data.last_saved_unix = now
@@ -198,8 +224,20 @@ func apply_worker_defaults() -> void:
 		worker_assignments = {}
 	if typeof(worker_unlock_flags) != TYPE_DICTIONARY:
 		worker_unlock_flags = {}
-	if not worker_unlock_flags.has("ava"):
-		worker_unlock_flags["ava"] = true
+	# "ava" was the original starter worker; "lily" replaced her in the new roster.
+	if bool(worker_unlock_flags.get("ava", false)):
+		worker_unlock_flags["lily"] = true
+	if not worker_unlock_flags.has("lily"):
+		worker_unlock_flags["lily"] = true
+	if typeof(tools) != TYPE_DICTIONARY:
+		tools = {}
+	if typeof(crafted_items) != TYPE_DICTIONARY:
+		crafted_items = {}
+	if typeof(upgrade_levels) != TYPE_DICTIONARY:
+		upgrade_levels = {}
+	if upgrade_levels.is_empty():
+		upgrade_levels = starter_upgrade_levels()
+	upgrade_save_version = maxi(upgrade_save_version, UPGRADE_SAVE_VERSION)
 	if stored_passive_coins < 0.0:
 		stored_passive_coins = 0.0
 	var now := int(Time.get_unix_time_from_system())
@@ -247,6 +285,9 @@ func apply_worker_defaults() -> void:
 	# Cap equipment at phase max (3).
 	for eq_id in equipment_levels.keys():
 		equipment_levels[eq_id] = clampi(int(equipment_levels[eq_id]), 1, 3)
+	# Broad ceiling here; UpgradeManager.ensure_defaults() clamps per-definition max_level.
+	for up_id in upgrade_levels.keys():
+		upgrade_levels[up_id] = clampi(int(upgrade_levels[up_id]), 1, 5)
 	version = maxi(version, SAVE_VERSION)
 
 
@@ -270,7 +311,11 @@ func clone_save_data() -> SaveData:
 	copy.unlocked_decorations = unlocked_decorations.duplicate(true)
 	copy.unlocked_recipes = unlocked_recipes.duplicate(true)
 	copy.equipment_levels = equipment_levels.duplicate(true)
+	copy.upgrade_save_version = upgrade_save_version
+	copy.upgrade_levels = upgrade_levels.duplicate(true)
 	copy.ingredients = ingredients.duplicate(true)
+	copy.tools = tools.duplicate(true)
+	copy.crafted_items = crafted_items.duplicate(true)
 	copy.best_level_stars = best_level_stars.duplicate(true)
 	copy.best_level_scores = best_level_scores.duplicate(true)
 	copy.best_order_stars = best_order_stars.duplicate(true)

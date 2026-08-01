@@ -37,7 +37,19 @@ const ENERGY_PLACEHOLDER := 5
 
 var catalog := ContentCatalog.new()
 var decor_catalog := DecorationCatalog.new()
+## Convenience accessor for the seeded typed-Resource definitions.
+var definitions: DefinitionDatabase:
+	get: return catalog.definitions
 var data: SaveData
+
+# Data-driven managers (signals + validation; no visual-scene dependencies).
+var economy := EconomyManager.new()
+var inventory := InventoryManager.new()
+var recipes := RecipeManager.new()
+var upgrades := UpgradeManager.new()
+var progression := ProgressionManager.new()
+var orders := OrderManager.new()
+var workers := WorkerService.new()
 var pending_level_ups: Array[Dictionary] = []
 var last_completion_rewards: Dictionary = {}
 var last_offline_payload: Dictionary = {}
@@ -65,6 +77,7 @@ func _ready() -> void:
 
 func _post_load_setup() -> void:
 	data.apply_worker_defaults()
+	_setup_managers()
 	WorkerManager.repair_assignments(catalog, data)
 	var decor_logs := DecorationManager.repair(decor_catalog, data)
 	if OS.is_debug_build() and not decor_logs.is_empty():
@@ -75,6 +88,58 @@ func _post_load_setup() -> void:
 	_ensure_order_board()
 	# Passive/offline systems remain in code for migration but are not exposed this phase.
 	OfflineEarningsCalculator.mark_session_active(data)
+
+
+func _setup_managers() -> void:
+	economy.setup(data)
+	inventory.setup(definitions, data)
+	recipes.setup(definitions, data, inventory, economy)
+	upgrades.setup(definitions, data, economy)
+	progression.setup(data, economy)
+	orders.setup(definitions, data, catalog)
+	workers.setup(definitions, data, catalog)
+	recipes.ensure_default_unlocks()
+	_wire_manager_signals()
+
+
+func _wire_manager_signals() -> void:
+	## Bridge manager signals into the legacy GameState signals the existing UI
+	## already listens to, so no UI rewiring is required for basic reactivity.
+	if not inventory.inventory_changed.is_connected(_on_inventory_manager_changed):
+		inventory.inventory_changed.connect(_on_inventory_manager_changed)
+	if not economy.coins_changed.is_connected(_on_economy_coins_changed):
+		economy.coins_changed.connect(_on_economy_coins_changed)
+	if not recipes.recipe_unlocked.is_connected(_on_recipe_manager_unlocked):
+		recipes.recipe_unlocked.connect(_on_recipe_manager_unlocked)
+	if not upgrades.upgrade_purchased.is_connected(_on_upgrade_manager_purchased):
+		upgrades.upgrade_purchased.connect(_on_upgrade_manager_purchased)
+	if not order_status_changed.is_connected(_on_order_state_touched):
+		order_status_changed.connect(_on_order_state_touched)
+	if not order_updated.is_connected(_on_order_state_touched):
+		order_updated.connect(_on_order_state_touched)
+
+
+func _on_inventory_manager_changed(ingredients_snapshot: Dictionary) -> void:
+	inventory_changed.emit(ingredients_snapshot)
+
+
+func _on_economy_coins_changed(amount: int) -> void:
+	coins_changed.emit(amount)
+
+
+func _on_recipe_manager_unlocked(recipe_id: String) -> void:
+	recipe_unlocked.emit(StringName(recipe_id))
+
+
+func _on_upgrade_manager_purchased(upgrade_id: String, new_level: int) -> void:
+	var def := definitions.get_upgrade(upgrade_id) if definitions else null
+	if def and def.linked_equipment_id != "":
+		equipment_upgraded.emit(StringName(def.linked_equipment_id), new_level)
+	state_changed.emit()
+
+
+func _on_order_state_touched(_a = null, _b = null) -> void:
+	orders.notify_changed()
 
 
 func has_save() -> bool:
@@ -167,11 +232,22 @@ func is_recipe_unlocked(recipe_id: StringName) -> bool:
 	return bool(data.unlocked_recipes.get(str(recipe_id), false))
 
 
+func _upgrade_id_for_equipment(equipment_id: StringName) -> String:
+	## Equipment ids and upgrade ids match 1:1 except the checkout counter,
+	## which is exposed to players as the "Cash Register" upgrade.
+	var key := str(equipment_id)
+	return "cash_register" if key == "checkout" else key
+
+
 func get_equipment_level(equipment_id: StringName) -> int:
+	if upgrades:
+		return upgrades.get_level(_upgrade_id_for_equipment(equipment_id))
 	return int(data.equipment_levels.get(str(equipment_id), 1))
 
 
 func get_ingredient_amount(ingredient_id: StringName) -> int:
+	if inventory and data:
+		return inventory.get_amount(str(ingredient_id))
 	if data == null:
 		return 0
 	_ensure_ingredients()
@@ -191,6 +267,8 @@ func get_energy_display() -> int:
 
 
 func get_total_ingredient_units() -> int:
+	if inventory:
+		return inventory.total_units()
 	_ensure_ingredients()
 	var total := 0
 	for key in data.ingredients.keys():
@@ -200,14 +278,20 @@ func get_total_ingredient_units() -> int:
 
 func reset_inventory_to_starter() -> void:
 	## Development helper — restores the New Game pantry.
-	data.ingredients = SaveData.starter_ingredients()
+	if inventory:
+		inventory.reset_to_starter()
+	else:
+		data.ingredients = SaveData.starter_ingredients()
+		inventory_changed.emit(data.ingredients.duplicate(true))
 	save_now()
-	inventory_changed.emit(data.ingredients.duplicate(true))
 	state_changed.emit()
 
 
 func _ensure_ingredients() -> void:
 	if data == null:
+		return
+	if inventory:
+		inventory.ensure_defaults()
 		return
 	if data.ingredients == null or typeof(data.ingredients) != TYPE_DICTIONARY:
 		data.ingredients = SaveData.starter_ingredients()
@@ -286,6 +370,11 @@ func can_unlock_recipe(recipe_id: StringName) -> Dictionary:
 
 
 func can_upgrade_equipment(equipment_id: StringName) -> Dictionary:
+	if upgrades:
+		var result := upgrades.can_purchase(_upgrade_id_for_equipment(equipment_id))
+		if not result.has("reason"):
+			result["reason"] = ""
+		return result
 	var eq := catalog.get_equipment(equipment_id)
 	if eq == null:
 		return {"ok": false, "reason": "Unknown equipment."}
@@ -493,6 +582,21 @@ func complete_order(order_id: String) -> Dictionary:
 	for k in bonus_ings.keys():
 		rewards["ingredients"][k] = int(rewards["ingredients"].get(k, 0)) + int(bonus_ings[k])
 
+	# Décor upgrade: extra "tip" bonus applied to the final coin reward.
+	var tip_bonus := upgrades.effect_value("decor") if upgrades else 0.0
+	if tip_bonus > 0.0:
+		rewards["coins"] = maxi(0, int(round(float(rewards["coins"]) * (1.0 + tip_bonus))))
+
+	# Lighting upgrade + Noah's bonus-star-chance perk: small odds of +1 star.
+	var star_chance := 0.0
+	if upgrades:
+		star_chance += upgrades.effect_value("lighting")
+	if workers:
+		star_chance += float(WorkerBonusCalculator.bonus_star_chance(catalog, data).get("chance", 0.0))
+	var bonus_star_awarded := star_chance > 0.0 and _rng.randf() < clampf(star_chance, 0.0, 0.9)
+	if bonus_star_awarded:
+		permanent_stars += 1
+
 	data.coins += int(rewards["coins"])
 	data.reputation += int(rewards["reputation"])
 	data.stars += permanent_stars
@@ -530,6 +634,7 @@ func complete_order(order_id: String) -> Dictionary:
 		"stars_earned_run": stars_earned,
 		"ingredients": rewards["ingredients"],
 		"bonus_ingredients": bonus_ings,
+		"bonus_star_awarded": bonus_star_awarded,
 		"breakdown": breakdown,
 		"level_ups": pending_level_ups.duplicate(true),
 	}
@@ -582,11 +687,42 @@ func unlock_recipe(recipe_id: StringName) -> Dictionary:
 	return {"ok": true, "reason": ""}
 
 
+func can_craft_recipe(recipe_id: StringName) -> Dictionary:
+	return recipes.can_craft(str(recipe_id))
+
+
+func craft_recipe(recipe_id: StringName) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var result := recipes.craft(str(recipe_id))
+	if not result.get("ok", false):
+		return result
+	save_now()
+	coins_changed.emit(data.coins)
+	inventory_changed.emit(data.ingredients.duplicate(true))
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func crafted_recipe_count(recipe_id: StringName) -> int:
+	return recipes.crafted_count(str(recipe_id))
+
+
 func upgrade_equipment(equipment_id: StringName) -> Dictionary:
+	if upgrades:
+		var result := upgrades.purchase(_upgrade_id_for_equipment(equipment_id))
+		if not result.get("ok", false):
+			if not result.has("reason"):
+				result["reason"] = "Could not upgrade."
+			return result
+		save_now()
+		notifications_changed.emit()
+		state_changed.emit()
+		return {"ok": true, "reason": "", "new_level": int(result.get("new_level", 1))}
 	var check := can_upgrade_equipment(equipment_id)
 	if not check.get("ok", false):
 		return check
-	var eq := catalog.get_equipment(equipment_id)
 	var next_level: int = int(check["next_level"])
 	var cost: int = int(check["cost"])
 	data.coins = maxi(0, data.coins - cost)
@@ -765,22 +901,27 @@ func get_worker(worker_id: StringName) -> WorkerData:
 
 
 func is_worker_hired(worker_id: StringName) -> bool:
+	if workers:
+		return workers.is_hired(str(worker_id))
 	return WorkerManager.is_hired(data, str(worker_id))
 
 
 func get_worker_level(worker_id: StringName) -> int:
+	if workers:
+		return workers.get_level(str(worker_id))
 	return WorkerManager.get_level(data, str(worker_id))
 
 
 func can_hire_worker(worker_id: StringName) -> Dictionary:
+	if workers:
+		return workers.can_hire(str(worker_id))
 	return WorkerManager.can_hire(catalog.get_worker(worker_id), data)
 
 
 func hire_worker(worker_id: StringName) -> Dictionary:
 	if _busy:
 		return {"ok": false, "reason": "Busy."}
-	var worker := catalog.get_worker(worker_id)
-	var result := WorkerManager.hire(worker, data)
+	var result: Dictionary = workers.hire(str(worker_id)) if workers else WorkerManager.hire(catalog.get_worker(worker_id), data)
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -792,14 +933,15 @@ func hire_worker(worker_id: StringName) -> Dictionary:
 
 
 func can_upgrade_worker(worker_id: StringName) -> Dictionary:
+	if workers:
+		return workers.can_upgrade(str(worker_id))
 	return WorkerManager.can_upgrade(catalog.get_worker(worker_id), data)
 
 
 func upgrade_worker(worker_id: StringName) -> Dictionary:
 	if _busy:
 		return {"ok": false, "reason": "Busy."}
-	var worker := catalog.get_worker(worker_id)
-	var result := WorkerManager.upgrade(worker, data)
+	var result: Dictionary = workers.upgrade(str(worker_id)) if workers else WorkerManager.upgrade(catalog.get_worker(worker_id), data)
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -811,8 +953,7 @@ func upgrade_worker(worker_id: StringName) -> Dictionary:
 
 
 func assign_worker(worker_id: StringName, station: WorkerData.Station) -> Dictionary:
-	var worker := catalog.get_worker(worker_id)
-	var result := WorkerManager.assign(worker, data, station)
+	var result: Dictionary = workers.assign(str(worker_id), station) if workers else WorkerManager.assign(catalog.get_worker(worker_id), data, station)
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -823,7 +964,7 @@ func assign_worker(worker_id: StringName, station: WorkerData.Station) -> Dictio
 
 
 func unassign_worker(worker_id: StringName) -> Dictionary:
-	var result := WorkerManager.unassign(data, str(worker_id))
+	var result: Dictionary = workers.unassign(str(worker_id)) if workers else WorkerManager.unassign(data, str(worker_id))
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -981,8 +1122,12 @@ func debug_reset_orders() -> void:
 
 
 func debug_max_equipment() -> void:
-	for id in catalog.equipment.keys():
-		data.equipment_levels[str(id)] = 3
+	if upgrades:
+		for id in ["oven", "mixer", "display_case", "cash_register"]:
+			upgrades.force_max(id)
+	else:
+		for id in catalog.equipment.keys():
+			data.equipment_levels[str(id)] = 3
 	save_now()
 	state_changed.emit()
 
@@ -1132,7 +1277,7 @@ func debug_reset_workers_only() -> void:
 	data.hired_workers.clear()
 	data.worker_levels.clear()
 	data.worker_assignments.clear()
-	data.worker_unlock_flags = {"ava": true}
+	data.worker_unlock_flags = {"lily": true}
 	data.stored_passive_coins = 0.0
 	save_now()
 	state_changed.emit()
