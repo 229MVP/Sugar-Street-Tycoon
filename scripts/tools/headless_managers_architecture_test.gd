@@ -171,6 +171,16 @@ func _test_workers(gs: Node) -> bool:
 	if unhired.get("ok", false):
 		push_error("unhired worker assign allowed")
 		return false
+	# Re-assigning the same worker to their station must stay idempotent (no
+	# duplicate entries in the station->worker assignment map).
+	workers.assign("lily", WorkerData.Station.OVEN)
+	workers.assign("lily", WorkerData.Station.OVEN)
+	if gs.data.worker_assignments.size() != 1:
+		push_error("duplicate assignment entries created: %s" % str(gs.data.worker_assignments))
+		return false
+	if str(gs.data.worker_assignments.get("oven", "")) != "lily":
+		push_error("oven station assignment corrupted")
+		return false
 	print("[OK] worker hire/assign guards (no duplicate hire or assignment)")
 	return true
 
