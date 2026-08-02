@@ -56,8 +56,7 @@ func go_decor() -> void:
 
 
 func go_workers() -> void:
-	# Workers are Coming Soon in this UI phase.
-	push_warning("SceneRouter: workers screen gated as Coming Soon")
+	_change(WORKER_ROSTER_SCENE)
 
 
 func start_order_level(order_id: String) -> void:

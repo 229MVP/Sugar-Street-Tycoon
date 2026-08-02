@@ -144,7 +144,11 @@ static func _to_dict(data: SaveData) -> Dictionary:
 		"unlocked_decorations": _stringify_keys(data.unlocked_decorations),
 		"unlocked_recipes": _stringify_keys(data.unlocked_recipes),
 		"equipment_levels": _stringify_keys(data.equipment_levels),
+		"upgrade_save_version": data.upgrade_save_version,
+		"upgrade_levels": _stringify_keys(data.upgrade_levels),
 		"ingredients": _stringify_keys(data.ingredients),
+		"tools": _stringify_keys(data.tools),
+		"crafted_items": _stringify_keys(data.crafted_items),
 		"best_level_stars": data.best_level_stars.duplicate(true),
 		"best_level_scores": data.best_level_scores.duplicate(true),
 		"best_order_stars": data.best_order_stars.duplicate(true),
@@ -191,10 +195,14 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	data.unlocked_decorations = _merge_dict({}, dict.get("unlocked_decorations", {}))
 	data.unlocked_recipes = _merge_dict(data.unlocked_recipes, dict.get("unlocked_recipes", {}))
 	data.equipment_levels = _merge_dict(data.equipment_levels, dict.get("equipment_levels", {}))
+	data.upgrade_save_version = int(dict.get("upgrade_save_version", 0))
+	data.upgrade_levels = _merge_dict(data.upgrade_levels, dict.get("upgrade_levels", {}))
 	# Merge saved pantry onto starter defaults, then fill any missing keys.
 	# Never clobber valid existing quantities; only add absent ingredient IDs.
 	data.ingredients = _merge_dict(data.ingredients, dict.get("ingredients", {}))
 	data.ingredients = SaveData.ensure_ingredient_keys(data.ingredients)
+	data.tools = _merge_dict({}, dict.get("tools", {}))
+	data.crafted_items = _merge_dict({}, dict.get("crafted_items", {}))
 	data.best_level_stars = dict.get("best_level_stars", {}).duplicate(true) if typeof(dict.get("best_level_stars", {})) == TYPE_DICTIONARY else {}
 	data.best_level_scores = dict.get("best_level_scores", {}).duplicate(true) if typeof(dict.get("best_level_scores", {})) == TYPE_DICTIONARY else {}
 	data.best_order_stars = dict.get("best_order_stars", {}).duplicate(true) if typeof(dict.get("best_order_stars", {})) == TYPE_DICTIONARY else {}
@@ -269,6 +277,33 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 		data.shop_appeal = 10
 		data.shop_appeal_tier = "Plain"
 		data.decoration_save_version = SaveData.DECORATION_SAVE_VERSION
+	if old_version < 5 or data.upgrade_save_version < 1:
+		if OS.is_debug_build():
+			print("SaveManager: migrating save v%d → upgrade/definition system v5" % old_version)
+		# Seed upgrade levels from legacy equipment levels when absent.
+		if data.upgrade_levels.is_empty():
+			data.upgrade_levels = SaveData.starter_upgrade_levels()
+		for pair in [
+			["oven", "oven"], ["mixer", "mixer"], ["display_case", "display_case"], ["cash_register", "checkout"],
+		]:
+			var up_id: String = pair[0]
+			var eq_id: String = pair[1]
+			var eq_level := int(data.equipment_levels.get(eq_id, 1))
+			data.upgrade_levels[up_id] = maxi(int(data.upgrade_levels.get(up_id, 1)), eq_level)
+		# Map legacy worker ids into the renamed roster (Lily/Marco/Sophie/Ethan/Mia/Noah).
+		var worker_map := {"ava": "lily", "marcus": "marco", "sofia": "sophie", "chef_andre": "noah"}
+		for old_id in worker_map.keys():
+			var new_id: String = worker_map[old_id]
+			if bool(data.hired_workers.get(old_id, false)):
+				data.hired_workers[new_id] = true
+			if data.worker_levels.has(old_id):
+				data.worker_levels[new_id] = int(data.worker_levels[old_id])
+			if bool(data.worker_unlock_flags.get(old_id, false)):
+				data.worker_unlock_flags[new_id] = true
+			for station in data.worker_assignments.keys():
+				if str(data.worker_assignments[station]) == old_id:
+					data.worker_assignments[station] = new_id
+		data.upgrade_save_version = SaveData.UPGRADE_SAVE_VERSION
 	data.apply_worker_defaults()
 
 	data.version = SaveData.SAVE_VERSION

@@ -39,13 +39,14 @@ func _test_starter(gs: Node) -> bool:
 	var expected := {
 		"chocolate": 5, "strawberries": 5, "flour": 5, "sugar": 5, "cream": 3,
 		"grapes": 0, "caramel": 0, "cookies": 0, "cheesecake_filling": 0, "packaging": 3,
+		"butter": 2, "vanilla": 1,
 	}
 	for k in expected.keys():
 		if gs.get_ingredient_amount(StringName(k)) != int(expected[k]):
 			push_error("starter %s expected %d got %d" % [k, expected[k], gs.get_ingredient_amount(StringName(k))])
 			return false
-	if gs.get_total_ingredient_units() != 26:
-		push_error("starter total units expected 26 got %d" % gs.get_total_ingredient_units())
+	if gs.get_total_ingredient_units() != 29:
+		push_error("starter total units expected 29 got %d" % gs.get_total_ingredient_units())
 		return false
 	print("[OK] starter ingredients")
 	return true

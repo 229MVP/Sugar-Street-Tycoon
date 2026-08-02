@@ -16,6 +16,7 @@ var _orders_badge: NotificationBadgeView
 var _recipes_badge: NotificationBadgeView
 var _upgrades_badge: NotificationBadgeView
 var _decor_badge: NotificationBadgeView
+var _workers_badge: NotificationBadgeView
 var _preview_host: VBoxContainer
 var _station_labels: Dictionary = {}
 var _decor_visual: ShopDecorVisual
@@ -152,7 +153,7 @@ func _build() -> void:
 	body.add_child(soon)
 	_normal_chrome.append(soon)
 	_coming_soon_card(soon, "Daily Bonus")
-	_coming_soon_card(soon, "Workers")
+	_workers_badge = _nav_card(soon, "Workers", "Hire & assign", func(): SceneRouter.go_workers(), true, false, 52)
 	_coming_soon_card(soon, "Locations")
 
 	var util := HBoxContainer.new()
@@ -428,6 +429,8 @@ func _refresh() -> void:
 		_upgrades_badge.set_count(GameState.affordable_upgrade_count())
 	if _decor_badge:
 		_decor_badge.set_count(int(GameState.decoration_notification_priority().get("count", 0)))
+	if _workers_badge:
+		_workers_badge.set_count(GameState.affordable_worker_action_count())
 
 
 func _refresh_progress() -> void:
