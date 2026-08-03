@@ -2,8 +2,19 @@ class_name SaveManager
 extends RefCounted
 ## Local JSON save/load with versioned migration and corruption recovery.
 
-const SAVE_PATH := "user://sugar_street_save.json"
-const BACKUP_PATH := "user://sugar_street_save.bak.json"
+const SAVE_FILENAME := "sugar_street_save.json"
+const BACKUP_FILENAME := "sugar_street_save.bak.json"
+const TEMP_FILENAME := "sugar_street_save.tmp.json"
+const SAVE_PATH := "user://" + SAVE_FILENAME
+const BACKUP_PATH := "user://" + BACKUP_FILENAME
+const TEMP_PATH := "user://" + TEMP_FILENAME
+
+## Set by load_game()/_recover_and_rewrite() whenever the primary save could
+## not be read as-is (corrupt/truncated/unsupported version) and recovery
+## kicked in. UI (Title screen) reads this once after continue_game()/_ready()
+## to show a "Continue error state" notice instead of silently swapping data.
+## One of: "" (no issue), "recovered_from_backup", "reset_to_defaults".
+static var last_recovery_note: String = ""
 
 
 static func has_save() -> bool:
@@ -33,22 +44,41 @@ static func save_game(data: SaveData) -> bool:
 	data.version = SaveData.SAVE_VERSION
 	var dict := _to_dict(data)
 	var json := JSON.stringify(dict, "\t")
-	if FileAccess.file_exists(SAVE_PATH):
-		var prev := FileAccess.get_file_as_string(SAVE_PATH)
-		var bak := FileAccess.open(BACKUP_PATH, FileAccess.WRITE)
-		if bak:
-			bak.store_string(prev)
-			bak.close()
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if file == null:
-		push_error("SaveManager: failed to open save for write: %s" % FileAccess.get_open_error())
+
+	# Atomic write: write to a temp file first, then rename it over the real
+	# save. If the app is killed mid-write, the temp file may be truncated but
+	# the previous SAVE_PATH is never touched, so a crash can never corrupt
+	# the primary save file.
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		push_error("SaveManager: cannot access user:// directory")
 		return false
-	file.store_string(json)
-	file.close()
+	var temp_file := FileAccess.open(TEMP_PATH, FileAccess.WRITE)
+	if temp_file == null:
+		push_error("SaveManager: failed to open temp save for write: %s" % FileAccess.get_open_error())
+		return false
+	temp_file.store_string(json)
+	temp_file.close()
+
+	# Roll the previous save into the backup slot before promoting the new one.
+	if dir.file_exists(SAVE_FILENAME):
+		if dir.file_exists(BACKUP_FILENAME):
+			dir.remove(BACKUP_FILENAME)
+		var copy_err := dir.copy(SAVE_PATH, BACKUP_PATH)
+		if copy_err != OK:
+			push_warning("SaveManager: failed to roll backup (err %d) — continuing." % copy_err)
+
+	if dir.file_exists(SAVE_FILENAME):
+		dir.remove(SAVE_FILENAME)
+	var rename_err := dir.rename(TEMP_PATH, SAVE_FILENAME)
+	if rename_err != OK:
+		push_error("SaveManager: failed to promote temp save (err %d)" % rename_err)
+		return false
 	return true
 
 
 static func load_game() -> SaveData:
+	last_recovery_note = ""
 	if not has_save():
 		return SaveData.create_default()
 	var text := FileAccess.get_file_as_string(SAVE_PATH)
@@ -111,8 +141,10 @@ static func _load_backup_or_default() -> SaveData:
 			var data := _from_dict(parsed as Dictionary)
 			if data:
 				push_warning("SaveManager: recovered from backup.")
+				last_recovery_note = "recovered_from_backup"
 				return data
 	push_warning("SaveManager: using default save after corruption.")
+	last_recovery_note = "reset_to_defaults"
 	return SaveData.create_default()
 
 
@@ -127,6 +159,12 @@ static func _recover_and_rewrite() -> SaveData:
 static func _to_dict(data: SaveData) -> Dictionary:
 	return {
 		"version": data.version,
+		"app_version": data.app_version,
+		"current_screen": data.current_screen,
+		"tutorial_completed": data.tutorial_completed,
+		"tutorial_step": data.tutorial_step,
+		"daily_bonus_state": data.daily_bonus_state.duplicate(true),
+		"notification_preference": data.notification_preference,
 		"last_saved_unix": data.last_saved_unix,
 		"last_active_unix": data.last_active_unix,
 		"player_level": data.player_level,
@@ -178,6 +216,13 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	var data := SaveData.create_default()
 	var old_version := int(dict.get("version", 1))
 	data.version = old_version
+	data.app_version = str(dict.get("app_version", ""))
+	data.current_screen = str(dict.get("current_screen", ""))
+	data.tutorial_completed = bool(dict.get("tutorial_completed", false))
+	data.tutorial_step = int(dict.get("tutorial_step", 0))
+	var daily_bonus: Variant = dict.get("daily_bonus_state", {})
+	data.daily_bonus_state = daily_bonus.duplicate(true) if typeof(daily_bonus) == TYPE_DICTIONARY else {}
+	data.notification_preference = str(dict.get("notification_preference", "not_set"))
 	data.last_saved_unix = int(dict.get("last_saved_unix", 0))
 	data.last_active_unix = int(dict.get("last_active_unix", data.last_saved_unix))
 	data.player_level = maxi(1, int(dict.get("player_level", 1)))
@@ -304,6 +349,12 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 				if str(data.worker_assignments[station]) == old_id:
 					data.worker_assignments[station] = new_id
 		data.upgrade_save_version = SaveData.UPGRADE_SAVE_VERSION
+	if old_version < 6:
+		if OS.is_debug_build():
+			print("SaveManager: migrating save v%d → beta 0.1 fields v6 (app_version/tutorial/daily bonus)" % old_version)
+		# All new v6 fields already have safe defaults from create_default() /
+		# apply_worker_defaults() below — nothing destructive needed here.
+		pass
 	data.apply_worker_defaults()
 
 	data.version = SaveData.SAVE_VERSION

@@ -56,6 +56,11 @@ var pending_level_ups: Array[Dictionary] = []
 var last_completion_rewards: Dictionary = {}
 var last_offline_payload: Dictionary = {}
 var current_session_result: Dictionary = {}
+## Set whenever the most recent load recovered from a corrupt/unreadable save
+## ("recovered_from_backup" / "reset_to_defaults"), or "" when the load was
+## clean. UI reads this once via consume_save_recovery_note() to show a
+## "Continue error state" notice instead of silently swapping save data.
+var pending_save_recovery_note: String = ""
 var _busy: bool = false
 var _purchase_lock: bool = false
 var _rng := RandomNumberGenerator.new()
@@ -68,6 +73,7 @@ func _ready() -> void:
 	decor_catalog.build()
 	if SaveManager.has_save():
 		data = SaveManager.load_game()
+		pending_save_recovery_note = SaveManager.last_recovery_note
 	else:
 		data = SaveData.create_default()
 	_post_load_setup()
@@ -156,6 +162,13 @@ func has_valid_save() -> bool:
 	return loaded != null and loaded.player_level >= 1
 
 
+func consume_save_recovery_note() -> String:
+	## Read-once accessor for the title screen's "Continue error state" notice.
+	var note := pending_save_recovery_note
+	pending_save_recovery_note = ""
+	return note
+
+
 func new_game() -> void:
 	var preserved_settings: Dictionary = {}
 	if data != null and typeof(data.settings) == TYPE_DICTIONARY:
@@ -173,6 +186,7 @@ func new_game() -> void:
 
 func continue_game() -> void:
 	data = SaveManager.load_game()
+	pending_save_recovery_note = SaveManager.last_recovery_note
 	_post_load_setup()
 	_apply_audio_settings()
 	save_loaded.emit()
@@ -182,6 +196,10 @@ func continue_game() -> void:
 
 func save_now() -> void:
 	OfflineEarningsCalculator.mark_session_active(data)
+	data.app_version = BuildConfig.APP_VERSION
+	var router := get_node_or_null("/root/SceneRouter")
+	if router:
+		data.current_screen = str(router.current_path)
 	SaveManager.save_game(data)
 	save_completed.emit()
 

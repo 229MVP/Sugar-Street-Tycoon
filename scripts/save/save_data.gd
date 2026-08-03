@@ -2,7 +2,7 @@ class_name SaveData
 extends Resource
 ## Serializable player / shop progress. Versioned for forward-compatible loads.
 
-const SAVE_VERSION := 5
+const SAVE_VERSION := 6
 const WORKER_SAVE_VERSION := 1
 const DECORATION_SAVE_VERSION := 1
 const UPGRADE_SAVE_VERSION := 1
@@ -19,8 +19,15 @@ enum OrderStatus {
 }
 
 @export var version: int = SAVE_VERSION
+## Human-readable app/build version that wrote this save (BuildConfig.APP_VERSION).
+## Informational only — save compatibility is governed by `version`, not this.
+@export var app_version: String = ""
 @export var last_saved_unix: int = 0
 @export var last_active_unix: int = 0
+## Safe-resume destination: the scene path active when this save was last
+## written, so a future "resume where I left off" feature has a stable field
+## to read. Beta 0.1 always resumes at the Shop Hub regardless of this value.
+@export var current_screen: String = ""
 
 # Player
 @export var player_level: int = 1
@@ -78,6 +85,22 @@ enum OrderStatus {
 @export var last_passive_tick_unix: int = 0
 @export var last_offline_calc_unix: int = 0
 @export var offline_pending_popup: Dictionary = {} ## shown once then cleared on collect/dismiss
+
+# Tutorial (first-session onboarding — see TutorialManager)
+@export var tutorial_completed: bool = false
+@export var tutorial_step: int = 0 ## Index into the tutorial step sequence; -1 once skipped/finished.
+
+# Daily bonus (schema reserved for Beta 0.1; claim UI is a future milestone —
+# see docs/BETA_01_AUDIT.md). Never auto-populated with rewards this phase.
+@export var daily_bonus_state: Dictionary = {
+	"streak_day": 0,
+	"last_claim_unix": 0,
+	"claimed_today": false,
+}
+
+## Placeholder until push notifications are implemented. One of:
+## "not_set" | "enabled" | "disabled".
+@export var notification_preference: String = "not_set"
 
 # Settings
 @export var settings: Dictionary = {
@@ -137,6 +160,12 @@ static func ensure_ingredient_keys(ingredients: Dictionary) -> Dictionary:
 static func create_default() -> SaveData:
 	var data := SaveData.new()
 	data.version = SAVE_VERSION
+	data.app_version = BuildConfig.APP_VERSION
+	data.current_screen = ""
+	data.tutorial_completed = false
+	data.tutorial_step = 0
+	data.daily_bonus_state = {"streak_day": 0, "last_claim_unix": 0, "claimed_today": false}
+	data.notification_preference = "not_set"
 	data.worker_save_version = WORKER_SAVE_VERSION
 	data.player_level = 1
 	data.experience = 0
@@ -214,6 +243,20 @@ static func create_default() -> SaveData:
 
 func apply_worker_defaults() -> void:
 	## Called during migration / repair for older saves.
+	if app_version.strip_edges() == "":
+		app_version = BuildConfig.APP_VERSION
+	if typeof(current_screen) != TYPE_STRING:
+		current_screen = ""
+	if typeof(daily_bonus_state) != TYPE_DICTIONARY:
+		daily_bonus_state = {}
+	for key in ["streak_day", "last_claim_unix"]:
+		if not daily_bonus_state.has(key):
+			daily_bonus_state[key] = 0
+	if not daily_bonus_state.has("claimed_today"):
+		daily_bonus_state["claimed_today"] = false
+	if notification_preference not in ["not_set", "enabled", "disabled"]:
+		notification_preference = "not_set"
+	tutorial_step = maxi(-1, tutorial_step)
 	if worker_save_version < 1:
 		worker_save_version = WORKER_SAVE_VERSION
 	if typeof(hired_workers) != TYPE_DICTIONARY:
@@ -294,6 +337,12 @@ func apply_worker_defaults() -> void:
 func clone_save_data() -> SaveData:
 	var copy := SaveData.new()
 	copy.version = version
+	copy.app_version = app_version
+	copy.current_screen = current_screen
+	copy.tutorial_completed = tutorial_completed
+	copy.tutorial_step = tutorial_step
+	copy.daily_bonus_state = daily_bonus_state.duplicate(true)
+	copy.notification_preference = notification_preference
 	copy.last_saved_unix = last_saved_unix
 	copy.last_active_unix = last_active_unix
 	copy.player_level = player_level

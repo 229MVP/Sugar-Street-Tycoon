@@ -24,6 +24,7 @@ func _ready() -> void:
 	_reduce_motion = bool(GameState.data.settings.get("reduce_motion", false))
 	_build_ui()
 	_refresh_continue()
+	_show_save_recovery_notice_if_needed()
 	AudioManager.play(AudioManager.Sfx.SHOP_OPENED)
 
 
@@ -494,6 +495,23 @@ func _refresh_continue() -> void:
 	_continue_button.disabled = not has_save
 	if _continue_help:
 		_continue_help.visible = not has_save
+
+
+func _show_save_recovery_notice_if_needed() -> void:
+	## "Continue error state": tell the player plainly when their save could
+	## not be read as-is, instead of silently swapping in recovered/default data.
+	var note := GameState.consume_save_recovery_note()
+	if note == "":
+		return
+	var message := ""
+	match note:
+		"recovered_from_backup":
+			message = "Your last save couldn't be read, so we restored your previous auto-backup. Recent progress may be missing."
+		"reset_to_defaults":
+			message = "Your save file was damaged and no backup could be used, so a fresh save was created. We're sorry for the lost progress."
+		_:
+			message = "Your save needed to be repaired on load."
+	_confirm.show_confirm("Save Notice", message, "OK", "OK")
 
 
 # ---------------------------------------------------------------------------
