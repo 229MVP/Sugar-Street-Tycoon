@@ -46,6 +46,10 @@ func _ready() -> void:
 	_btn(vbox, "Corrupt Save Test", func(): GameState.debug_corrupt_save())
 	_btn(vbox, "Reset Save", func(): GameState.reset_save())
 	_btn(vbox, "Beta Diagnostics…", _open_diagnostics)
+	_btn(vbox, "Reset Tutorial", func():
+		TutorialManager.reset_debug_only(GameState.data)
+		GameState.save_now()
+	)
 
 
 func _open_diagnostics() -> void:

@@ -13,6 +13,7 @@ extends Control
 var _level_complete: LevelCompletePopup
 var _booster_bar: HBoxContainer
 var _confirm: ConfirmPopup
+var _tutorial: TutorialOverlay
 
 
 func _ready() -> void:
@@ -57,6 +58,26 @@ func _ready() -> void:
 	debug_panel.add_moves.connect(controller.debug_add_moves)
 	debug_panel.add_objective.connect(controller.debug_add_objective)
 	debug_panel.reshuffle.connect(controller.debug_reshuffle)
+	call_deferred("_maybe_show_tutorial", "gameplay")
+
+
+func _maybe_show_tutorial(screen_key: String) -> void:
+	if not TutorialManager.should_show(GameState.data, screen_key):
+		return
+	var step := TutorialManager.current_step(GameState.data)
+	_tutorial = TutorialOverlay.new()
+	$Overlays.add_child(_tutorial)
+	_tutorial.next_pressed.connect(func():
+		TutorialManager.advance(GameState.data)
+		GameState.save_now()
+		_tutorial.queue_free()
+	)
+	_tutorial.skip_pressed.connect(func():
+		TutorialManager.skip(GameState.data)
+		GameState.save_now()
+		_tutorial.queue_free()
+	)
+	_tutorial.show_step(str(step.get("title", "")), str(step.get("body", "")))
 
 
 func _style_board_frame() -> void:
@@ -127,6 +148,7 @@ func _on_show_win(score: int, moves_remaining: int) -> void:
 			xp = order.experience_reward
 			rep = order.reputation_reward
 	_level_complete.show_result(score, moves_remaining, stars, coins, xp, rep)
+	call_deferred("_maybe_show_tutorial", "level_complete")
 
 
 func _on_show_loss(progress_text: String) -> void:

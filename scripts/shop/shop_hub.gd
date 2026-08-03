@@ -28,6 +28,7 @@ var _actions_host: Control
 var _edit_overlay: ShopEditOverlay
 var _shop_upgrade_popup: ShopLevelUpgradePopup
 var _normal_chrome: Array = []
+var _tutorial: TutorialOverlay
 
 
 func _ready() -> void:
@@ -44,6 +45,33 @@ func _ready() -> void:
 		GameState.data.settings["open_shop_edit"] = false
 		GameState.save_now()
 		call_deferred("_enter_edit_mode")
+	call_deferred("_maybe_show_tutorial")
+
+
+func _maybe_show_tutorial() -> void:
+	var screen_key := ""
+	if TutorialManager.should_show(GameState.data, "shop_hub_intro"):
+		screen_key = "shop_hub_intro"
+	elif TutorialManager.should_show(GameState.data, "shop_hub_final"):
+		screen_key = "shop_hub_final"
+	if screen_key == "":
+		return
+	var step := TutorialManager.current_step(GameState.data)
+	_tutorial = TutorialOverlay.new()
+	add_child(_tutorial)
+	_tutorial.next_pressed.connect(_on_tutorial_advanced)
+	_tutorial.skip_pressed.connect(_on_tutorial_skipped)
+	_tutorial.show_step(str(step.get("title", "")), str(step.get("body", "")))
+
+
+func _on_tutorial_advanced() -> void:
+	TutorialManager.advance(GameState.data)
+	GameState.save_now()
+
+
+func _on_tutorial_skipped() -> void:
+	TutorialManager.skip(GameState.data)
+	GameState.save_now()
 
 
 func _build() -> void:
