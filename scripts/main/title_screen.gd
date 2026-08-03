@@ -536,11 +536,20 @@ func _on_continue() -> void:
 	SceneRouter.go_shop()
 
 
+func _show_confirm_action(title: String, body: String, yes_text: String, no_text: String, callback: Callable) -> void:
+	## The title screen reuses a single ConfirmPopup for several destructive
+	## actions (New Game, Exit). Clear any stale one-shot connection from a
+	## previously-cancelled flow before wiring a new one, so cancelling one
+	## confirm can never cause a later, unrelated confirm to also fire it.
+	for connection in _confirm.confirmed.get_connections():
+		_confirm.confirmed.disconnect(connection["callable"])
+	_confirm.show_confirm(title, body, yes_text, no_text)
+	_confirm.confirmed.connect(callback, CONNECT_ONE_SHOT)
+
+
 func _on_new_game() -> void:
 	AudioManager.play_button()
-	_confirm.show_confirm("Start New Game?", "This resets starter progress. Settings are preserved.", "New Game", "Cancel")
-	if not _confirm.confirmed.is_connected(_do_new_game):
-		_confirm.confirmed.connect(_do_new_game, CONNECT_ONE_SHOT)
+	_show_confirm_action("Start New Game?", "This resets starter progress. Settings are preserved.", "New Game", "Cancel", _do_new_game)
 
 
 func _do_new_game() -> void:
@@ -555,9 +564,14 @@ func _on_settings() -> void:
 
 func _on_exit() -> void:
 	AudioManager.play_button()
-	if _is_desktop_exit_supported():
-		GameState.save_now()
-		get_tree().quit()
+	if not _is_desktop_exit_supported():
+		return
+	_show_confirm_action("Exit Sugar Street Tycoon?", "Your progress is saved automatically.", "Exit", "Cancel", _do_exit)
+
+
+func _do_exit() -> void:
+	GameState.save_now()
+	get_tree().quit()
 
 
 func _is_desktop_exit_supported() -> bool:
