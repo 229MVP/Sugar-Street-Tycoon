@@ -109,7 +109,7 @@ func _build_ui() -> void:
 		pass
 
 	var version := Label.new()
-	version.text = "v%s · Development Build" % str(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+	version.text = "v%s · %s Build" % [BuildConfig.version_label(), BuildConfig.environment_label()]
 	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	version.add_theme_font_size_override("font_size", 11)
 	version.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
