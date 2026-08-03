@@ -16,6 +16,9 @@ var _confirm: ConfirmPopup
 
 
 func _ready() -> void:
+	var debug_hint := get_node_or_null("SafeArea/VBox/DebugHint")
+	if debug_hint:
+		debug_hint.visible = BuildConfig.debug_features_enabled()
 	controller.board_path = controller.get_path_to(board)
 	controller.set_board(board)
 	if SceneRouter.pending_level_config != null:

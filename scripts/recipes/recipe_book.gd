@@ -53,13 +53,10 @@ func _build_shell() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	var safe := MarginContainer.new()
+	var safe := SafeAreaContainer.new()
 	safe.name = "SafeArea"
 	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	safe.add_theme_constant_override("margin_left", 12)
-	safe.add_theme_constant_override("margin_right", 12)
-	safe.add_theme_constant_override("margin_top", 10)
-	safe.add_theme_constant_override("margin_bottom", 8)
+	safe.set_min_margins(12, 10, 12, 8)
 	add_child(safe)
 
 	var vbox := VBoxContainer.new()

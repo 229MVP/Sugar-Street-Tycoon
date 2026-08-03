@@ -35,12 +35,9 @@ func _build_ui() -> void:
 	_build_background()
 	_spawn_decorations()
 
-	var margin := MarginContainer.new()
+	var margin := SafeAreaContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_top", 18)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.set_min_margins(22, 18, 22, 14)
 	add_child(margin)
 
 	var scroll := ScrollContainer.new()
