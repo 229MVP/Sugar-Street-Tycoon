@@ -12,12 +12,14 @@ signal replay_pressed
 @onready var replay_button: Button = %ReplayButton
 @onready var stars_label: Label = get_node_or_null("%StarsLabel")
 
+var _busy: bool = false
+
 
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	continue_button.pressed.connect(func(): continue_pressed.emit())
-	replay_button.pressed.connect(func(): replay_pressed.emit())
+	continue_button.pressed.connect(_on_continue)
+	replay_button.pressed.connect(_on_replay)
 	if stars_label == null:
 		stars_label = Label.new()
 		stars_label.name = "StarsLabel"
@@ -26,7 +28,26 @@ func _ready() -> void:
 		panel.get_node("VBox").move_child(stars_label, 3)
 
 
+func _on_continue() -> void:
+	if _busy:
+		return
+	_busy = true
+	continue_button.disabled = true
+	continue_pressed.emit()
+
+
+func _on_replay() -> void:
+	if _busy:
+		return
+	_busy = true
+	replay_button.disabled = true
+	replay_pressed.emit()
+
+
 func show_result(score: int, moves_remaining: int, stars: int = 1) -> void:
+	_busy = false
+	continue_button.disabled = false
+	replay_button.disabled = false
 	score_label.text = "Final score: %d" % score
 	moves_label.text = "Moves remaining: %d" % moves_remaining
 	if stars_label:
