@@ -83,7 +83,7 @@ func _bootstrap() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not debug_enabled:
+	if not debug_enabled or not BuildConfig.debug_features_enabled():
 		return
 	if event.is_action_pressed("debug_print_board"):
 		debug_print_board()

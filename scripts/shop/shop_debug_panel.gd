@@ -4,7 +4,7 @@ extends Control
 
 
 func _ready() -> void:
-	if not GameState.DEBUG_TOOLS_ENABLED or not OS.is_debug_build():
+	if not GameState.DEBUG_TOOLS_ENABLED:
 		visible = false
 		queue_free()
 		return

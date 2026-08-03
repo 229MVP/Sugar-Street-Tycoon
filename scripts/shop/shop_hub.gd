@@ -201,7 +201,7 @@ func _build() -> void:
 	add_child(_edit_overlay)
 	_edit_overlay.closed.connect(_exit_edit_mode)
 
-	if GameState.DEBUG_TOOLS_ENABLED and OS.is_debug_build():
+	if GameState.DEBUG_TOOLS_ENABLED:
 		var debug := ShopDebugPanel.new()
 		add_child(debug)
 

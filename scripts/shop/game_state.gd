@@ -31,7 +31,9 @@ signal appeal_changed(appeal: int, tier: String)
 signal inventory_changed(ingredients: Dictionary)
 
 ## True in editor / debug builds only. Production exports hide debug panels.
-const DEBUG_TOOLS_ENABLED := true
+## Routed through BuildConfig so release-safety gating lives in one place.
+var DEBUG_TOOLS_ENABLED: bool:
+	get: return BuildConfig.developer_menu_enabled()
 ## Placeholder energy counter shown in the top bar (no full energy system yet).
 const ENERGY_PLACEHOLDER := 5
 

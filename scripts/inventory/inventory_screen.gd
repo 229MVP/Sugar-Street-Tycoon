@@ -120,7 +120,7 @@ func _build_shell() -> void:
 	_empty_label.add_theme_color_override("font_color", SECONDARY)
 	_list.add_child(_empty_label)
 
-	if GameState.DEBUG_TOOLS_ENABLED and OS.is_debug_build():
+	if GameState.DEBUG_TOOLS_ENABLED:
 		var reset := Button.new()
 		reset.text = "Reset Inventory to Starter Values"
 		reset.custom_minimum_size = Vector2(0, 44)
