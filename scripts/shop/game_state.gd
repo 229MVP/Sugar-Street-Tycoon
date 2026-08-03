@@ -488,6 +488,13 @@ func begin_order_level(order_id: String) -> LevelConfig:
 	var status := get_order_status(order_id)
 	if status == SaveData.OrderStatus.COMPLETED or status == SaveData.OrderStatus.LOCKED:
 		return null
+	# An order cannot be started while a DIFFERENT order is already in
+	# progress (resuming the same order is fine — that's how "Continue" works).
+	if data.active_order_id != "" and data.active_order_id != order_id:
+		var active_status := get_order_status(data.active_order_id)
+		if active_status == SaveData.OrderStatus.LEVEL_IN_PROGRESS:
+			push_warning("GameState: cannot start '%s' — '%s' is already in progress." % [order_id, data.active_order_id])
+			return null
 	# READY_TO_COMPLETE allowed for practice replay without clearing the win.
 	var level := _build_level_for_order(order)
 	if level == null or not level.validate():
