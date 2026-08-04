@@ -24,6 +24,9 @@ var _signals_wired: bool = false
 var _cards_created: int = 0
 
 
+var _tutorial: TutorialOverlay
+
+
 func _ready() -> void:
 	theme = ThemeFactory.build()
 	_build_shell()
@@ -33,6 +36,24 @@ func _ready() -> void:
 	if GameState.has_signal("save_loaded") and not GameState.save_loaded.is_connected(_safe_rebuild):
 		GameState.save_loaded.connect(_safe_rebuild)
 	AudioManager.play(AudioManager.Sfx.SHOP_OPENED)
+	call_deferred("_maybe_show_tutorial")
+
+
+func _maybe_show_tutorial() -> void:
+	if not TutorialManager.should_show(GameState.data, "orders"):
+		return
+	var step := TutorialManager.current_step(GameState.data)
+	_tutorial = TutorialOverlay.new()
+	add_child(_tutorial)
+	_tutorial.next_pressed.connect(func():
+		TutorialManager.advance(GameState.data)
+		GameState.save_now()
+	)
+	_tutorial.skip_pressed.connect(func():
+		TutorialManager.skip(GameState.data)
+		GameState.save_now()
+	)
+	_tutorial.show_step(str(step.get("title", "")), str(step.get("body", "")))
 
 
 func _build_shell() -> void:
@@ -47,13 +68,10 @@ func _build_shell() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	var safe := MarginContainer.new()
+	var safe := SafeAreaContainer.new()
 	safe.name = "SafeArea"
 	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	safe.add_theme_constant_override("margin_left", 12)
-	safe.add_theme_constant_override("margin_right", 12)
-	safe.add_theme_constant_override("margin_top", 10)
-	safe.add_theme_constant_override("margin_bottom", 8)
+	safe.set_min_margins(12, 10, 12, 8)
 	add_child(safe)
 
 	var vbox := VBoxContainer.new()

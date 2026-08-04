@@ -12,9 +12,14 @@ extends Control
 
 var _level_complete: LevelCompletePopup
 var _booster_bar: HBoxContainer
+var _confirm: ConfirmPopup
+var _tutorial: TutorialOverlay
 
 
 func _ready() -> void:
+	var debug_hint := get_node_or_null("SafeArea/VBox/DebugHint")
+	if debug_hint:
+		debug_hint.visible = BuildConfig.debug_features_enabled()
 	controller.board_path = controller.get_path_to(board)
 	controller.set_board(board)
 	if SceneRouter.pending_level_config != null:
@@ -24,6 +29,8 @@ func _ready() -> void:
 	_build_booster_bar()
 	_level_complete = LevelCompletePopup.new()
 	$Overlays.add_child(_level_complete)
+	_confirm = ConfirmPopup.new()
+	$Overlays.add_child(_confirm)
 
 	hud.bind_controller(controller)
 
@@ -43,6 +50,7 @@ func _ready() -> void:
 	loss_popup.exit_pressed.connect(_on_loss_exit)
 	pause_popup.resume_pressed.connect(controller.resume_game)
 	pause_popup.restart_pressed.connect(controller.restart_level)
+	pause_popup.give_up_pressed.connect(_on_give_up_pressed)
 
 	debug_panel.print_board.connect(controller.debug_print_board)
 	debug_panel.restart.connect(controller.restart_level)
@@ -50,6 +58,26 @@ func _ready() -> void:
 	debug_panel.add_moves.connect(controller.debug_add_moves)
 	debug_panel.add_objective.connect(controller.debug_add_objective)
 	debug_panel.reshuffle.connect(controller.debug_reshuffle)
+	call_deferred("_maybe_show_tutorial", "gameplay")
+
+
+func _maybe_show_tutorial(screen_key: String) -> void:
+	if not TutorialManager.should_show(GameState.data, screen_key):
+		return
+	var step := TutorialManager.current_step(GameState.data)
+	_tutorial = TutorialOverlay.new()
+	$Overlays.add_child(_tutorial)
+	_tutorial.next_pressed.connect(func():
+		TutorialManager.advance(GameState.data)
+		GameState.save_now()
+		_tutorial.queue_free()
+	)
+	_tutorial.skip_pressed.connect(func():
+		TutorialManager.skip(GameState.data)
+		GameState.save_now()
+		_tutorial.queue_free()
+	)
+	_tutorial.show_step(str(step.get("title", "")), str(step.get("body", "")))
 
 
 func _style_board_frame() -> void:
@@ -120,6 +148,7 @@ func _on_show_win(score: int, moves_remaining: int) -> void:
 			xp = order.experience_reward
 			rep = order.reputation_reward
 	_level_complete.show_result(score, moves_remaining, stars, coins, xp, rep)
+	call_deferred("_maybe_show_tutorial", "level_complete")
 
 
 func _on_show_loss(progress_text: String) -> void:
@@ -142,6 +171,29 @@ func _on_replay() -> void:
 	win_popup.hide_popup()
 	loss_popup.hide_popup()
 	controller.restart_level()
+
+
+func _on_give_up_pressed() -> void:
+	## Destructive action (forfeits the current attempt) — require confirmation.
+	_confirm.show_confirm(
+		"Give Up?",
+		"You'll return to the Shop Hub and this attempt will be marked failed.",
+		"Give Up",
+		"Keep Playing"
+	)
+	if not _confirm.confirmed.is_connected(_do_give_up):
+		_confirm.confirmed.connect(_do_give_up, CONNECT_ONE_SHOT)
+	if not _confirm.cancelled.is_connected(_on_give_up_cancelled):
+		_confirm.cancelled.connect(_on_give_up_cancelled, CONNECT_ONE_SHOT)
+
+
+func _on_give_up_cancelled() -> void:
+	pause_popup.show_pause()
+
+
+func _do_give_up() -> void:
+	pause_popup.hide_popup()
+	controller.exit_to_ready()
 
 
 func _on_loss_exit() -> void:

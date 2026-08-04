@@ -4,7 +4,7 @@ extends Control
 
 
 func _ready() -> void:
-	if not GameState.DEBUG_TOOLS_ENABLED or not OS.is_debug_build():
+	if not GameState.DEBUG_TOOLS_ENABLED:
 		visible = false
 		queue_free()
 		return
@@ -45,6 +45,22 @@ func _ready() -> void:
 	_btn(vbox, "Print Save", func(): GameState.debug_print_save())
 	_btn(vbox, "Corrupt Save Test", func(): GameState.debug_corrupt_save())
 	_btn(vbox, "Reset Save", func(): GameState.reset_save())
+	_btn(vbox, "Beta Diagnostics…", _open_diagnostics)
+	_btn(vbox, "Reset Tutorial", func():
+		TutorialManager.reset_debug_only(GameState.data)
+		GameState.save_now()
+	)
+
+
+func _open_diagnostics() -> void:
+	var existing := get_tree().root.get_node_or_null("BetaDiagnosticsOverlay")
+	if existing:
+		existing.show_panel()
+		return
+	var diagnostics := BetaDiagnosticsScreen.new()
+	diagnostics.name = "BetaDiagnosticsOverlay"
+	get_tree().root.add_child(diagnostics)
+	diagnostics.show_panel()
 
 
 func _btn(parent: Node, text: String, cb: Callable) -> void:

@@ -57,6 +57,13 @@ func is_input_locked() -> bool:
 	return _input_locked
 
 
+func is_resolving() -> bool:
+	## True while a swap/cascade/reshuffle is actively animating. Used to block
+	## pausing mid-resolve, which would otherwise let `board_stable` fire while
+	## paused and silently skip the win/loss check (see GameController.pause_game).
+	return _resolving
+
+
 func set_input_locked(locked: bool) -> void:
 	if _input_locked == locked:
 		return

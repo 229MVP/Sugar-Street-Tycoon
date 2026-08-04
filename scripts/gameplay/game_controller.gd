@@ -26,6 +26,7 @@ var session_recipe_id: StringName = &""
 var _board: MatchBoard
 var _waiting_for_swap_result: bool = false
 var _result_reported: bool = false
+var _restarting: bool = false
 
 
 func _ready() -> void:
@@ -82,7 +83,7 @@ func _bootstrap() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not debug_enabled:
+	if not debug_enabled or not BuildConfig.debug_features_enabled():
 		return
 	if event.is_action_pressed("debug_print_board"):
 		debug_print_board()
@@ -130,11 +131,21 @@ func start_level(config: LevelConfig = null) -> void:
 
 
 func restart_level() -> void:
+	if _restarting:
+		return
+	_restarting = true
 	await start_level(level_config)
+	_restarting = false
 
 
 func pause_game() -> void:
 	if not level_state.can_accept_input():
+		return
+	if _board and (_board.is_resolving() or _board.is_input_locked()):
+		# Defer pausing until the current swap/cascade fully finishes (board
+		# unlocks + emits board_stable) so end-condition evaluation is never
+		# skipped while PAUSED — that would silently skip win/loss forever.
+		status_message.emit("Hold on — finishing the current move.")
 		return
 	level_state.pause()
 	if _board:
@@ -147,8 +158,13 @@ func resume_game() -> void:
 		return
 	level_state.resume()
 	if _board:
+		# Safe to always unlock: pause_game() refuses to pause while the board
+		# is mid-resolve, so a resolve can never still be in flight here.
 		_board.set_input_locked(false)
 	hide_overlays.emit()
+	# Safety net: re-run the end-condition check in case anything was missed
+	# while paused (defensive; pause_game() already blocks the common case).
+	_evaluate_end_conditions()
 
 
 func exit_to_ready() -> void:

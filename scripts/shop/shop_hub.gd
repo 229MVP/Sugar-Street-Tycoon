@@ -28,6 +28,7 @@ var _actions_host: Control
 var _edit_overlay: ShopEditOverlay
 var _shop_upgrade_popup: ShopLevelUpgradePopup
 var _normal_chrome: Array = []
+var _tutorial: TutorialOverlay
 
 
 func _ready() -> void:
@@ -44,6 +45,33 @@ func _ready() -> void:
 		GameState.data.settings["open_shop_edit"] = false
 		GameState.save_now()
 		call_deferred("_enter_edit_mode")
+	call_deferred("_maybe_show_tutorial")
+
+
+func _maybe_show_tutorial() -> void:
+	var screen_key := ""
+	if TutorialManager.should_show(GameState.data, "shop_hub_intro"):
+		screen_key = "shop_hub_intro"
+	elif TutorialManager.should_show(GameState.data, "shop_hub_final"):
+		screen_key = "shop_hub_final"
+	if screen_key == "":
+		return
+	var step := TutorialManager.current_step(GameState.data)
+	_tutorial = TutorialOverlay.new()
+	add_child(_tutorial)
+	_tutorial.next_pressed.connect(_on_tutorial_advanced)
+	_tutorial.skip_pressed.connect(_on_tutorial_skipped)
+	_tutorial.show_step(str(step.get("title", "")), str(step.get("body", "")))
+
+
+func _on_tutorial_advanced() -> void:
+	TutorialManager.advance(GameState.data)
+	GameState.save_now()
+
+
+func _on_tutorial_skipped() -> void:
+	TutorialManager.skip(GameState.data)
+	GameState.save_now()
 
 
 func _build() -> void:
@@ -58,12 +86,9 @@ func _build() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	var safe := MarginContainer.new()
+	var safe := SafeAreaContainer.new()
 	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	safe.add_theme_constant_override("margin_left", 12)
-	safe.add_theme_constant_override("margin_right", 12)
-	safe.add_theme_constant_override("margin_top", 10)
-	safe.add_theme_constant_override("margin_bottom", 8)
+	safe.set_min_margins(12, 10, 12, 8)
 	add_child(safe)
 
 	var vbox := VBoxContainer.new()
@@ -201,7 +226,7 @@ func _build() -> void:
 	add_child(_edit_overlay)
 	_edit_overlay.closed.connect(_exit_edit_mode)
 
-	if GameState.DEBUG_TOOLS_ENABLED and OS.is_debug_build():
+	if GameState.DEBUG_TOOLS_ENABLED:
 		var debug := ShopDebugPanel.new()
 		add_child(debug)
 

@@ -10,15 +10,36 @@ signal exit_pressed
 @onready var replay_button: Button = %ReplayButton
 @onready var exit_button: Button = %ExitButton
 
+var _busy: bool = false
+
 
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	replay_button.pressed.connect(func(): replay_pressed.emit())
-	exit_button.pressed.connect(func(): exit_pressed.emit())
+	replay_button.pressed.connect(_on_replay)
+	exit_button.pressed.connect(_on_exit)
+
+
+func _on_replay() -> void:
+	if _busy:
+		return
+	_busy = true
+	replay_button.disabled = true
+	replay_pressed.emit()
+
+
+func _on_exit() -> void:
+	if _busy:
+		return
+	_busy = true
+	exit_button.disabled = true
+	exit_pressed.emit()
 
 
 func show_result(progress_text: String) -> void:
+	_busy = false
+	replay_button.disabled = false
+	exit_button.disabled = false
 	progress_label.text = "Progress: %s" % progress_text
 	if exit_button:
 		exit_button.text = "Return to Shop" if SceneRouter.pending_order_id != "" else "Exit"

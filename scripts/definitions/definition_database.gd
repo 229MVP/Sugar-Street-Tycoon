@@ -382,6 +382,10 @@ func _seed_rewards() -> void:
 	_add_reward("reward_noah", 325, 55, 12, {"flour": 3, "cream": 2})
 	_add_reward("reward_morgan", 450, 75, 18, {"grapes": 2, "sugar": 2})
 	_add_reward("reward_elena", 260, 40, 9, {"butter": 2, "vanilla": 1})
+	_add_reward("reward_mia_002", 300, 50, 11, {"chocolate": 2, "flour": 2})
+	_add_reward("reward_jordan_002b", 520, 85, 20, {"chocolate": 3, "caramel": 2})
+	_add_reward("reward_taylor_002", 380, 60, 14, {"cheesecake_filling": 2, "cream": 2})
+	_add_reward("reward_morgan_002", 600, 95, 24, {"cream": 2, "cookies": 2, "packaging": 2})
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +415,16 @@ func _seed_levels() -> void:
 	])
 	_add_level("level_05", "Candy Crush Hour", 18, [{"piece_id": "candy", "amount": 35, "description": "Collect 35 candy pieces"}])
 	_add_level("level_06", "Butter Batch", 20, [{"piece_id": "cookie", "amount": 24, "description": "Collect 24 cookies"}])
+	_add_level("level_07", "Donut Dash", 20, [{"piece_id": "donut", "amount": 22, "description": "Collect 22 donuts"}])
+	_add_level("level_08", "Sweet Rush", 22, [
+		{"piece_id": "chocolate", "amount": 15, "description": "Collect 15 chocolate pieces"},
+		{"piece_id": "strawberry", "amount": 15, "description": "Collect 15 strawberries"},
+	])
+	_add_level("level_09", "Cookie Jar", 18, [{"piece_id": "cookie", "amount": 28, "description": "Collect 28 cookies"}])
+	_add_level("level_10", "Grand Opening", 26, [
+		{"piece_id": "cupcake", "amount": 15, "description": "Collect 15 cupcakes"},
+		{"piece_id": "donut", "amount": 15, "description": "Collect 15 donuts"},
+	])
 
 
 # ---------------------------------------------------------------------------
@@ -453,6 +467,16 @@ func _seed_orders() -> void:
 		OrderDefinition.Difficulty.HARD, "candy", 35, 18, "Collect 35 candy pieces")
 	_add_order("order_elena_006", "elena", "butter_cookies", "level_06", "reward_elena",
 		OrderDefinition.Difficulty.EASY, "cookie", 24, 20, "Collect 24 cookies")
+	_add_order("order_mia_007", "mia_customer", "chocolate_cupcakes", "level_07", "reward_mia_002",
+		OrderDefinition.Difficulty.MEDIUM, "donut", 22, 20, "Collect 22 donuts")
+	_add_order("order_jordan_008", "jordan", "caramel_donuts", "level_08", "reward_jordan_002b",
+		OrderDefinition.Difficulty.HARD, "chocolate", 15, 22, "Collect 15 chocolate + 15 strawberries",
+		[{"piece_id": "strawberry", "amount": 15}])
+	_add_order("order_taylor_009", "taylor", "cheesecake_cups", "level_09", "reward_taylor_002",
+		OrderDefinition.Difficulty.MEDIUM, "cookie", 28, 18, "Collect 28 cookies")
+	_add_order("order_morgan_010", "morgan", "cookies_cream_cupcakes", "level_10", "reward_morgan_002",
+		OrderDefinition.Difficulty.HARD, "cupcake", 15, 26, "Collect 15 cupcakes + 15 donuts",
+		[{"piece_id": "donut", "amount": 15}])
 
 
 # ---------------------------------------------------------------------------

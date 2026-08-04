@@ -24,6 +24,7 @@ func _ready() -> void:
 	_reduce_motion = bool(GameState.data.settings.get("reduce_motion", false))
 	_build_ui()
 	_refresh_continue()
+	_show_save_recovery_notice_if_needed()
 	AudioManager.play(AudioManager.Sfx.SHOP_OPENED)
 
 
@@ -34,12 +35,9 @@ func _build_ui() -> void:
 	_build_background()
 	_spawn_decorations()
 
-	var margin := MarginContainer.new()
+	var margin := SafeAreaContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_top", 18)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.set_min_margins(22, 18, 22, 14)
 	add_child(margin)
 
 	var scroll := ScrollContainer.new()
@@ -111,7 +109,7 @@ func _build_ui() -> void:
 		pass
 
 	var version := Label.new()
-	version.text = "v%s · Development Build" % str(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+	version.text = "v%s · %s Build" % [BuildConfig.version_label(), BuildConfig.environment_label()]
 	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	version.add_theme_font_size_override("font_size", 11)
 	version.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
@@ -496,6 +494,23 @@ func _refresh_continue() -> void:
 		_continue_help.visible = not has_save
 
 
+func _show_save_recovery_notice_if_needed() -> void:
+	## "Continue error state": tell the player plainly when their save could
+	## not be read as-is, instead of silently swapping in recovered/default data.
+	var note := GameState.consume_save_recovery_note()
+	if note == "":
+		return
+	var message := ""
+	match note:
+		"recovered_from_backup":
+			message = "Your last save couldn't be read, so we restored your previous auto-backup. Recent progress may be missing."
+		"reset_to_defaults":
+			message = "Your save file was damaged and no backup could be used, so a fresh save was created. We're sorry for the lost progress."
+		_:
+			message = "Your save needed to be repaired on load."
+	_confirm.show_confirm("Save Notice", message, "OK", "OK")
+
+
 # ---------------------------------------------------------------------------
 # Preserved button behavior (do not change navigation / save logic)
 # ---------------------------------------------------------------------------
@@ -518,11 +533,20 @@ func _on_continue() -> void:
 	SceneRouter.go_shop()
 
 
+func _show_confirm_action(title: String, body: String, yes_text: String, no_text: String, callback: Callable) -> void:
+	## The title screen reuses a single ConfirmPopup for several destructive
+	## actions (New Game, Exit). Clear any stale one-shot connection from a
+	## previously-cancelled flow before wiring a new one, so cancelling one
+	## confirm can never cause a later, unrelated confirm to also fire it.
+	for connection in _confirm.confirmed.get_connections():
+		_confirm.confirmed.disconnect(connection["callable"])
+	_confirm.show_confirm(title, body, yes_text, no_text)
+	_confirm.confirmed.connect(callback, CONNECT_ONE_SHOT)
+
+
 func _on_new_game() -> void:
 	AudioManager.play_button()
-	_confirm.show_confirm("Start New Game?", "This resets starter progress. Settings are preserved.", "New Game", "Cancel")
-	if not _confirm.confirmed.is_connected(_do_new_game):
-		_confirm.confirmed.connect(_do_new_game, CONNECT_ONE_SHOT)
+	_show_confirm_action("Start New Game?", "This resets starter progress. Settings are preserved.", "New Game", "Cancel", _do_new_game)
 
 
 func _do_new_game() -> void:
@@ -537,9 +561,14 @@ func _on_settings() -> void:
 
 func _on_exit() -> void:
 	AudioManager.play_button()
-	if _is_desktop_exit_supported():
-		GameState.save_now()
-		get_tree().quit()
+	if not _is_desktop_exit_supported():
+		return
+	_show_confirm_action("Exit Sugar Street Tycoon?", "Your progress is saved automatically.", "Exit", "Cancel", _do_exit)
+
+
+func _do_exit() -> void:
+	GameState.save_now()
+	get_tree().quit()
 
 
 func _is_desktop_exit_supported() -> bool:

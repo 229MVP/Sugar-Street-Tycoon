@@ -1,6 +1,7 @@
-[gd_scene load_steps=10 format=3 uid="uid://gameplay_scene"]
+[gd_scene load_steps=11 format=3 uid="uid://gameplay_scene"]
 
 [ext_resource type="Script" path="res://scripts/gameplay/gameplay_root.gd" id="1_root"]
+[ext_resource type="Script" path="res://scripts/ui/components/safe_area_container.gd" id="10_safearea"]
 [ext_resource type="Script" path="res://scripts/gameplay/game_controller.gd" id="2_controller"]
 [ext_resource type="PackedScene" uid="uid://game_hud_scene" path="res://scenes/ui/hud.tscn" id="3_hud"]
 [ext_resource type="PackedScene" uid="uid://match_board_scene" path="res://scenes/gameplay/board.tscn" id="4_board"]
@@ -57,6 +58,11 @@ theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 12
+script = ExtResource("10_safearea")
+min_margin_left = 12
+min_margin_top = 8
+min_margin_right = 12
+min_margin_bottom = 12
 
 [node name="VBox" type="VBoxContainer" parent="SafeArea"]
 layout_mode = 2
