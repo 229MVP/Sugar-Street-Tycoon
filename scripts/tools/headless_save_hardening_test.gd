@@ -46,6 +46,7 @@ func _test_new_fields_roundtrip(gs: Node) -> bool:
 	gs.data.tutorial_step = 5
 	gs.data.notification_preference = "enabled"
 	gs.data.daily_bonus_state = {"streak_day": 3, "last_claim_unix": 12345, "claimed_today": true}
+	gs.data.booster_inventory = {"hammer": 4, "swap": 2}
 	gs.save_now()
 	gs.continue_game()
 	if gs.data.app_version != BuildConfig.APP_VERSION:

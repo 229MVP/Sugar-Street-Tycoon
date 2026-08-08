@@ -2,7 +2,7 @@ class_name SaveData
 extends Resource
 ## Serializable player / shop progress. Versioned for forward-compatible loads.
 
-const SAVE_VERSION := 6
+const SAVE_VERSION := 7
 const WORKER_SAVE_VERSION := 1
 const DECORATION_SAVE_VERSION := 1
 const UPGRADE_SAVE_VERSION := 1
@@ -90,12 +90,18 @@ enum OrderStatus {
 @export var tutorial_completed: bool = false
 @export var tutorial_step: int = 0 ## Index into the tutorial step sequence; -1 once skipped/finished.
 
-# Daily bonus (schema reserved for Beta 0.1; claim UI is a future milestone —
-# see docs/BETA_01_AUDIT.md). Never auto-populated with rewards this phase.
+# Daily bonus (7-day streak rewards — see DailyBonusManager)
 @export var daily_bonus_state: Dictionary = {
 	"streak_day": 0,
 	"last_claim_unix": 0,
+	"last_claim_date": "",
 	"claimed_today": false,
+}
+
+## In-level booster inventory (hammer destroys one tile, swap forces adjacent swap).
+@export var booster_inventory: Dictionary = {
+	"hammer": 3,
+	"swap": 3,
 }
 
 ## Placeholder until push notifications are implemented. One of:
@@ -164,7 +170,13 @@ static func create_default() -> SaveData:
 	data.current_screen = ""
 	data.tutorial_completed = false
 	data.tutorial_step = 0
-	data.daily_bonus_state = {"streak_day": 0, "last_claim_unix": 0, "claimed_today": false}
+	data.daily_bonus_state = {
+		"streak_day": 0,
+		"last_claim_unix": 0,
+		"last_claim_date": "",
+		"claimed_today": false,
+	}
+	data.booster_inventory = BoosterManager.STARTER_COUNTS.duplicate(true)
 	data.notification_preference = "not_set"
 	data.worker_save_version = WORKER_SAVE_VERSION
 	data.player_level = 1
@@ -252,8 +264,12 @@ func apply_worker_defaults() -> void:
 	for key in ["streak_day", "last_claim_unix"]:
 		if not daily_bonus_state.has(key):
 			daily_bonus_state[key] = 0
+	if not daily_bonus_state.has("last_claim_date"):
+		daily_bonus_state["last_claim_date"] = ""
 	if not daily_bonus_state.has("claimed_today"):
 		daily_bonus_state["claimed_today"] = false
+	BoosterManager.ensure_defaults(self)
+	DailyBonusManager.sync_calendar_state(daily_bonus_state)
 	if notification_preference not in ["not_set", "enabled", "disabled"]:
 		notification_preference = "not_set"
 	tutorial_step = maxi(-1, tutorial_step)
@@ -342,6 +358,7 @@ func clone_save_data() -> SaveData:
 	copy.tutorial_completed = tutorial_completed
 	copy.tutorial_step = tutorial_step
 	copy.daily_bonus_state = daily_bonus_state.duplicate(true)
+	copy.booster_inventory = booster_inventory.duplicate(true)
 	copy.notification_preference = notification_preference
 	copy.last_saved_unix = last_saved_unix
 	copy.last_active_unix = last_active_unix

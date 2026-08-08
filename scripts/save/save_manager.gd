@@ -164,6 +164,7 @@ static func _to_dict(data: SaveData) -> Dictionary:
 		"tutorial_completed": data.tutorial_completed,
 		"tutorial_step": data.tutorial_step,
 		"daily_bonus_state": data.daily_bonus_state.duplicate(true),
+		"booster_inventory": _stringify_keys(data.booster_inventory),
 		"notification_preference": data.notification_preference,
 		"last_saved_unix": data.last_saved_unix,
 		"last_active_unix": data.last_active_unix,
@@ -222,6 +223,7 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	data.tutorial_step = int(dict.get("tutorial_step", 0))
 	var daily_bonus: Variant = dict.get("daily_bonus_state", {})
 	data.daily_bonus_state = daily_bonus.duplicate(true) if typeof(daily_bonus) == TYPE_DICTIONARY else {}
+	data.booster_inventory = _merge_dict({}, dict.get("booster_inventory", {}))
 	data.notification_preference = str(dict.get("notification_preference", "not_set"))
 	data.last_saved_unix = int(dict.get("last_saved_unix", 0))
 	data.last_active_unix = int(dict.get("last_active_unix", data.last_saved_unix))
@@ -355,6 +357,10 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 		# All new v6 fields already have safe defaults from create_default() /
 		# apply_worker_defaults() below — nothing destructive needed here.
 		pass
+	if old_version < 7:
+		if OS.is_debug_build():
+			print("SaveManager: migrating save v%d → v7 (booster inventory)" % old_version)
+		BoosterManager.ensure_defaults(data)
 	data.apply_worker_defaults()
 
 	data.version = SaveData.SAVE_VERSION

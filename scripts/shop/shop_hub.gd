@@ -29,6 +29,7 @@ var _edit_overlay: ShopEditOverlay
 var _shop_upgrade_popup: ShopLevelUpgradePopup
 var _normal_chrome: Array = []
 var _tutorial: TutorialOverlay
+var _daily_bonus: DailyBonusPopup
 
 
 func _ready() -> void:
@@ -177,7 +178,7 @@ func _build() -> void:
 	soon.add_theme_constant_override("v_separation", 8)
 	body.add_child(soon)
 	_normal_chrome.append(soon)
-	_coming_soon_card(soon, "Daily Bonus")
+	_coming_soon_card(soon, "Daily Bonus", true)
 	_workers_badge = _nav_card(soon, "Workers", "Hire & assign", func(): SceneRouter.go_workers(), true, false, 52)
 	_coming_soon_card(soon, "Locations")
 
@@ -218,6 +219,8 @@ func _build() -> void:
 	_level_up.continue_pressed.connect(_show_pending_level_ups)
 	_shop_upgrade_popup = ShopLevelUpgradePopup.new()
 	add_child(_shop_upgrade_popup)
+	_daily_bonus = DailyBonusPopup.new()
+	add_child(_daily_bonus)
 	_shop_upgrade_popup.upgraded.connect(func(level):
 		_celebrate_shop_level(level)
 		_refresh()
@@ -398,22 +401,32 @@ func _nav_card(parent: Control, title: String, subtitle: String, cb: Callable, w
 	return badge
 
 
-func _coming_soon_card(parent: Control, title: String) -> void:
+func _coming_soon_card(parent: Control, title: String, daily_bonus: bool = false) -> void:
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.custom_minimum_size = Vector2(0, 52)
-	btn.text = "%s\nComing Soon" % title
-	btn.disabled = true
-	btn.clip_text = true
-	ThemeFactory.apply_button_styles(btn, {
-		"normal": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
-		"hover": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
-		"pressed": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
-		"disabled": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
-		"focus": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
-	}, SugarStreetColors.DISABLED_TEXT)
-	btn.add_theme_font_size_override("font_size", 11)
-	btn.pressed.connect(func(): _coming_soon(title))
+	if daily_bonus:
+		btn.text = "%s\nClaim streak" % title
+		btn.disabled = false
+		ThemeFactory.apply_button_styles(btn, ThemeFactory.soft_button_styles(), BROWN)
+		btn.add_theme_font_size_override("font_size", 11)
+		btn.pressed.connect(func():
+			AudioManager.play_button()
+			_daily_bonus.show_popup()
+		)
+	else:
+		btn.text = "%s\nComing Soon" % title
+		btn.disabled = true
+		btn.clip_text = true
+		ThemeFactory.apply_button_styles(btn, {
+			"normal": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
+			"hover": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
+			"pressed": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
+			"disabled": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
+			"focus": ThemeFactory._btn(SugarStreetColors.DISABLED_FILL, 12),
+		}, SugarStreetColors.DISABLED_TEXT)
+		btn.add_theme_font_size_override("font_size", 11)
+		btn.pressed.connect(func(): _coming_soon(title))
 	parent.add_child(btn)
 
 
