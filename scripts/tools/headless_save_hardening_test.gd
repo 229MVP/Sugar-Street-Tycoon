@@ -61,6 +61,9 @@ func _test_new_fields_roundtrip(gs: Node) -> bool:
 	if int(gs.data.daily_bonus_state.get("streak_day", -1)) != 3:
 		push_error("daily_bonus_state not persisted")
 		return false
+	if BoosterManager.get_count(gs.data, BoosterManager.HAMMER) != 4:
+		push_error("booster_inventory not persisted")
+		return false
 	if gs.data.current_screen == null:
 		push_error("current_screen field missing")
 		return false
