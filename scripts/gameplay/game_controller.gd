@@ -149,6 +149,7 @@ func pause_game() -> void:
 		return
 	level_state.pause()
 	if _board:
+		_board.cancel_booster_mode()
 		_board.set_input_locked(true)
 	show_pause.emit()
 

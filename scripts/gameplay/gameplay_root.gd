@@ -12,6 +12,8 @@ extends Control
 
 var _level_complete: LevelCompletePopup
 var _booster_bar: HBoxContainer
+var _booster_buttons: Dictionary = {}
+var _active_booster: StringName = &""
 var _confirm: ConfirmPopup
 var _tutorial: TutorialOverlay
 
@@ -58,6 +60,10 @@ func _ready() -> void:
 	debug_panel.add_moves.connect(controller.debug_add_moves)
 	debug_panel.add_objective.connect(controller.debug_add_objective)
 	debug_panel.reshuffle.connect(controller.debug_reshuffle)
+	if not board.booster_action_finished.is_connected(_on_booster_action_finished):
+		board.booster_action_finished.connect(_on_booster_action_finished)
+	if not board.booster_mode_changed.is_connected(_on_booster_mode_changed):
+		board.booster_mode_changed.connect(_on_booster_mode_changed)
 	call_deferred("_maybe_show_tutorial", "gameplay")
 
 
@@ -109,28 +115,85 @@ func _build_booster_bar() -> void:
 	_booster_bar.add_theme_constant_override("separation", 8)
 	_booster_bar.custom_minimum_size = Vector2(0, 52)
 	vbox.add_child(_booster_bar)
-	# Place before debug hint if present.
 	vbox.move_child(_booster_bar, mini(3, vbox.get_child_count() - 1))
 	var boosters := [
-		["🥄", "Whisk", 3],
-		["🍬", "Stripe", 2],
-		["💣", "Bomb", 1],
-		["✋", "Swap", 2],
+		[BoosterManager.HAMMER, "🔨", "Hammer"],
+		[BoosterManager.SWAP, "↔", "Swap"],
 	]
 	for b in boosters:
+		var booster_id: StringName = b[0]
 		var btn := Button.new()
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size = Vector2(44, 48)
-		btn.text = "%s\nx%d" % [b[0], b[2]]
-		btn.disabled = true # Visual placeholder — no unfinished logic.
+		btn.custom_minimum_size = Vector2(64, 48)
+		btn.toggle_mode = true
 		ThemeFactory.apply_button_styles(btn, {
 			"normal": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH, 14),
 			"hover": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH, 14),
-			"pressed": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH, 14),
+			"pressed": ThemeFactory._btn(SugarStreetColors.MINT_GREEN, 14),
 			"disabled": ThemeFactory._btn(SugarStreetColors.SOFT_IVORY, 14),
 			"focus": ThemeFactory._btn(SugarStreetColors.SOFT_PEACH, 14),
 		}, SugarStreetColors.DARK_TEXT)
+		btn.pressed.connect(func(): _on_booster_pressed(booster_id))
 		_booster_bar.add_child(btn)
+		_booster_buttons[booster_id] = btn
+	_refresh_booster_bar()
+
+
+func _refresh_booster_bar() -> void:
+	for booster_id in _booster_buttons.keys():
+		var btn: Button = _booster_buttons[booster_id]
+		var count := BoosterManager.get_count(GameState.data, booster_id)
+		var label := "Hammer" if booster_id == BoosterManager.HAMMER else "Swap"
+		var icon := "🔨" if booster_id == BoosterManager.HAMMER else "↔"
+		btn.text = "%s %s\nx%d" % [icon, label, count]
+		btn.disabled = count <= 0 or board.is_input_locked() or board.is_resolving()
+		btn.button_pressed = _active_booster == booster_id
+
+
+func _on_booster_pressed(booster_id: StringName) -> void:
+	if board.is_input_locked() or board.is_resolving():
+		return
+	if _active_booster == booster_id:
+		_cancel_booster_mode()
+		return
+	if not BoosterManager.can_use(GameState.data, booster_id):
+		_refresh_booster_bar()
+		return
+	_cancel_booster_mode()
+	_active_booster = booster_id
+	var mode := MatchBoard.BoosterMode.HAMMER if booster_id == BoosterManager.HAMMER else MatchBoard.BoosterMode.SWAP
+	board.enter_booster_mode(mode)
+	_refresh_booster_bar()
+	controller.status_message.emit(
+		"Tap a tile to smash it." if booster_id == BoosterManager.HAMMER
+		else "Select two adjacent tiles to swap."
+	)
+
+
+func _cancel_booster_mode() -> void:
+	if _active_booster != &"":
+		board.cancel_booster_mode()
+	_active_booster = &""
+	_refresh_booster_bar()
+
+
+func _on_booster_mode_changed(active: bool) -> void:
+	if not active:
+		_active_booster = &""
+	_refresh_booster_bar()
+
+
+func _on_booster_action_finished(mode: int, success: bool) -> void:
+	if not success:
+		controller.status_message.emit("Booster canceled.")
+		_cancel_booster_mode()
+		return
+	var booster_id := BoosterManager.HAMMER if mode == MatchBoard.BoosterMode.HAMMER else BoosterManager.SWAP
+	if BoosterManager.consume(GameState.data, booster_id):
+		GameState.save_now()
+	_refresh_booster_bar()
+	_active_booster = &""
+	controller.status_message.emit("Booster used!")
 
 
 func _on_show_win(score: int, moves_remaining: int) -> void:
@@ -167,6 +230,7 @@ func _on_win_continue() -> void:
 
 
 func _on_replay() -> void:
+	_cancel_booster_mode()
 	_level_complete.hide_popup()
 	win_popup.hide_popup()
 	loss_popup.hide_popup()
@@ -174,6 +238,7 @@ func _on_replay() -> void:
 
 
 func _on_give_up_pressed() -> void:
+	_cancel_booster_mode()
 	## Destructive action (forfeits the current attempt) — require confirmation.
 	_confirm.show_confirm(
 		"Give Up?",

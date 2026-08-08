@@ -46,6 +46,7 @@ func _test_new_fields_roundtrip(gs: Node) -> bool:
 	gs.data.tutorial_step = 5
 	gs.data.notification_preference = "enabled"
 	gs.data.daily_bonus_state = {"streak_day": 3, "last_claim_unix": 12345, "claimed_today": true}
+	gs.data.booster_inventory = {"hammer": 4, "swap": 2}
 	gs.save_now()
 	gs.continue_game()
 	if gs.data.app_version != BuildConfig.APP_VERSION:
@@ -59,6 +60,9 @@ func _test_new_fields_roundtrip(gs: Node) -> bool:
 		return false
 	if int(gs.data.daily_bonus_state.get("streak_day", -1)) != 3:
 		push_error("daily_bonus_state not persisted")
+		return false
+	if BoosterManager.get_count(gs.data, BoosterManager.HAMMER) != 4:
+		push_error("booster_inventory not persisted")
 		return false
 	if gs.data.current_screen == null:
 		push_error("current_screen field missing")

@@ -23,11 +23,11 @@ static func find_match_groups(grid: Array, columns: int, rows: int) -> Array:
 			if piece == null:
 				col += 1
 				continue
-			var type_id := piece.get_type_id()
+			var type_id := _match_type_id(piece)
 			var run_len := 1
 			while col + run_len < columns:
 				var next_piece: DessertPiece = grid[row][col + run_len]
-				if next_piece == null or next_piece.get_type_id() != type_id:
+				if next_piece == null or _match_type_id(next_piece) != type_id or type_id == &"":
 					break
 				run_len += 1
 			if run_len >= 3:
@@ -44,11 +44,11 @@ static func find_match_groups(grid: Array, columns: int, rows: int) -> Array:
 			if piece == null:
 				row += 1
 				continue
-			var type_id := piece.get_type_id()
+			var type_id := _match_type_id(piece)
 			var run_len := 1
 			while row + run_len < rows:
 				var next_piece: DessertPiece = grid[row + run_len][col]
-				if next_piece == null or next_piece.get_type_id() != type_id:
+				if next_piece == null or _match_type_id(next_piece) != type_id or type_id == &"":
 					break
 				run_len += 1
 			if run_len >= 3:
@@ -80,11 +80,11 @@ static func _find_horizontal(grid: Array, columns: int, rows: int, matched: Dict
 			if piece == null:
 				col += 1
 				continue
-			var type_id := piece.get_type_id()
+			var type_id := _match_type_id(piece)
 			var run_len := 1
 			while col + run_len < columns:
 				var next_piece: DessertPiece = grid[row][col + run_len]
-				if next_piece == null or next_piece.get_type_id() != type_id:
+				if next_piece == null or _match_type_id(next_piece) != type_id or type_id == &"":
 					break
 				run_len += 1
 			if run_len >= 3:
@@ -101,14 +101,20 @@ static func _find_vertical(grid: Array, columns: int, rows: int, matched: Dictio
 			if piece == null:
 				row += 1
 				continue
-			var type_id := piece.get_type_id()
+			var type_id := _match_type_id(piece)
 			var run_len := 1
 			while row + run_len < rows:
 				var next_piece: DessertPiece = grid[row + run_len][col]
-				if next_piece == null or next_piece.get_type_id() != type_id:
+				if next_piece == null or _match_type_id(next_piece) != type_id or type_id == &"":
 					break
 				run_len += 1
 			if run_len >= 3:
 				for i in run_len:
 					matched[Vector2i(col, row + i)] = true
 			row += run_len
+
+
+static func _match_type_id(piece: DessertPiece) -> StringName:
+	if piece == null:
+		return &""
+	return piece.get_match_type_id()
