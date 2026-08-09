@@ -103,7 +103,7 @@ func _build_shell() -> void:
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.custom_minimum_size = Vector2(0, 240)
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ScrollHelper.configure_vertical(_scroll)
 	vbox.add_child(_scroll)
 
 	_list = VBoxContainer.new()

@@ -49,11 +49,15 @@ func show_result(score: int, moves_remaining: int, stars: int = 1) -> void:
 	continue_button.disabled = false
 	replay_button.disabled = false
 	score_label.text = "Final score: %d" % score
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	moves_label.text = "Moves remaining: %d" % moves_remaining
+	moves_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if stars_label:
 		stars_label.text = "Stars earned: %s" % "★".repeat(stars) + "☆".repeat(maxi(0, 3 - stars))
+		stars_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stars_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	continue_button.text = "Return to Shop" if SceneRouter.pending_order_id != "" else "Continue"
-	visible = true
+	ModalLayer.present(self)
 	modulate.a = 0.0
 	panel.scale = Vector2(0.85, 0.85)
 	panel.pivot_offset = panel.size * 0.5
@@ -65,4 +69,5 @@ func show_result(score: int, moves_remaining: int, stars: int = 1) -> void:
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false

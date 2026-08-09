@@ -41,9 +41,12 @@ func show_result(progress_text: String) -> void:
 	replay_button.disabled = false
 	exit_button.disabled = false
 	progress_label.text = "Progress: %s" % progress_text
+	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	progress_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	if exit_button:
 		exit_button.text = "Return to Shop" if SceneRouter.pending_order_id != "" else "Exit"
-	visible = true
+	ModalLayer.present(self)
+	FeatureTipPresenter.maybe_show(self, "loss")
 	modulate.a = 0.0
 	panel.scale = Vector2(0.85, 0.85)
 	panel.pivot_offset = panel.size * 0.5
@@ -55,4 +58,5 @@ func show_result(progress_text: String) -> void:
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false

@@ -37,6 +37,11 @@ func _ready() -> void:
 	resized.connect(_on_resized)
 	call_deferred("_on_resized")
 	AudioManager.play(AudioManager.Sfx.SHOP_OPENED)
+	call_deferred("_show_feature_tip")
+
+
+func _show_feature_tip() -> void:
+	FeatureTipPresenter.maybe_show(self, "inventory")
 
 
 func _build_shell() -> void:
@@ -101,7 +106,7 @@ func _build_shell() -> void:
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.custom_minimum_size = Vector2(0, 200)
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ScrollHelper.configure_vertical(_scroll)
 	vbox.add_child(_scroll)
 
 	_list = VBoxContainer.new()
@@ -266,18 +271,24 @@ func _make_card(item: IngredientData, category_label: String) -> PanelContainer:
 	var name_l := Label.new()
 	name_l.text = item.display_name
 	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	name_l.add_theme_font_size_override("font_size", 15)
 	name_l.add_theme_color_override("font_color", BROWN)
 	col.add_child(name_l)
 
 	var qty := Label.new()
 	qty.text = "%d owned" % amount
+	qty.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	qty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	qty.add_theme_font_size_override("font_size", 13)
 	qty.add_theme_color_override("font_color", SECONDARY if amount > 0 else Color("#817671"))
 	col.add_child(qty)
 
 	var meta := Label.new()
 	meta.text = "%s · %s" % [category_label, "Available" if amount > 0 else "Empty"]
+	meta.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	meta.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	meta.add_theme_font_size_override("font_size", 11)
 	meta.add_theme_color_override("font_color", SECONDARY)
 	col.add_child(meta)

@@ -20,6 +20,25 @@ var return_after_level_path: String = ORDERS_SCENE
 var _nav_lock: bool = false
 
 
+func _ready() -> void:
+	## Ensure the full-viewport modal host exists for the whole session.
+	call_deferred("_ensure_modal_host")
+
+
+func _ensure_modal_host() -> void:
+	ModalLayer.ensure(get_tree())
+
+
+func _notification(what: int) -> void:
+	## Android system Back: dismiss the top modal before changing scenes.
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if ModalLayer.handle_back_static():
+			get_viewport().set_input_as_handled()
+			return
+		# No modal open — stay on the current screen (store policy: don't quit).
+		get_viewport().set_input_as_handled()
+
+
 func go_path(path: String) -> void:
 	_change(path)
 

@@ -2,7 +2,7 @@ class_name SaveData
 extends Resource
 ## Serializable player / shop progress. Versioned for forward-compatible loads.
 
-const SAVE_VERSION := 7
+const SAVE_VERSION := 8
 const WORKER_SAVE_VERSION := 1
 const DECORATION_SAVE_VERSION := 1
 const UPGRADE_SAVE_VERSION := 1
@@ -89,6 +89,8 @@ enum OrderStatus {
 # Tutorial (first-session onboarding — see TutorialManager)
 @export var tutorial_completed: bool = false
 @export var tutorial_step: int = 0 ## Index into the tutorial step sequence; -1 once skipped/finished.
+## Per-feature tip flags (inventory/recipes/upgrades/etc.) — true once shown.
+@export var tutorial_flags: Dictionary = {}
 
 # Daily bonus (7-day streak rewards — see DailyBonusManager)
 @export var daily_bonus_state: Dictionary = {
@@ -170,6 +172,7 @@ static func create_default() -> SaveData:
 	data.current_screen = ""
 	data.tutorial_completed = false
 	data.tutorial_step = 0
+	data.tutorial_flags = {}
 	data.daily_bonus_state = {
 		"streak_day": 0,
 		"last_claim_unix": 0,
@@ -273,6 +276,8 @@ func apply_worker_defaults() -> void:
 	if notification_preference not in ["not_set", "enabled", "disabled"]:
 		notification_preference = "not_set"
 	tutorial_step = maxi(-1, tutorial_step)
+	if typeof(tutorial_flags) != TYPE_DICTIONARY:
+		tutorial_flags = {}
 	if worker_save_version < 1:
 		worker_save_version = WORKER_SAVE_VERSION
 	if typeof(hired_workers) != TYPE_DICTIONARY:
@@ -357,6 +362,7 @@ func clone_save_data() -> SaveData:
 	copy.current_screen = current_screen
 	copy.tutorial_completed = tutorial_completed
 	copy.tutorial_step = tutorial_step
+	copy.tutorial_flags = tutorial_flags.duplicate(true)
 	copy.daily_bonus_state = daily_bonus_state.duplicate(true)
 	copy.booster_inventory = booster_inventory.duplicate(true)
 	copy.notification_preference = notification_preference

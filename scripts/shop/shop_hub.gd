@@ -102,7 +102,7 @@ func _build() -> void:
 
 	var body_scroll := ScrollContainer.new()
 	body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ScrollHelper.configure_vertical(body_scroll)
 	vbox.add_child(body_scroll)
 	var body := VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL

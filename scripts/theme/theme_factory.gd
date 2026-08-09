@@ -30,7 +30,68 @@ static func build() -> Theme:
 	theme.set_stylebox("grabber_area", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN))
 	theme.set_stylebox("grabber_area_highlight", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN.lightened(0.1)))
 	theme.set_stylebox("slider", "HSlider", _bar_bg())
+
+	# CheckButton / toggle styling — never fall back to plain white.
+	var check_off := _btn(SugarStreetColors.SOFT_PEACH, 14, false, false)
+	var check_on := _btn(SugarStreetColors.MINT_GREEN, 14, false, false)
+	var check_off_hover := _btn(SugarStreetColors.SOFT_PEACH.lightened(0.08), 14, false, false)
+	var check_on_hover := _btn(SugarStreetColors.MINT_GREEN.lightened(0.08), 14, false, false)
+	var check_disabled := _btn(SugarStreetColors.DISABLED_FILL, 14, false, false)
+	var check_focus := _btn(SugarStreetColors.SOFT_PEACH, 14, true, false)
+	theme.set_stylebox("normal", "CheckButton", check_off)
+	theme.set_stylebox("pressed", "CheckButton", check_on)
+	theme.set_stylebox("hover", "CheckButton", check_off_hover)
+	theme.set_stylebox("hover_pressed", "CheckButton", check_on_hover)
+	theme.set_stylebox("disabled", "CheckButton", check_disabled)
+	theme.set_stylebox("focus", "CheckButton", check_focus)
+	theme.set_color("font_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_pressed_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_hover_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_hover_pressed_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_disabled_color", "CheckButton", SugarStreetColors.DISABLED_TEXT)
+	theme.set_color("font_focus_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+
+	# Hide scrollbar chrome globally while keeping scroll input.
+	var empty_sb := StyleBoxEmpty.new()
+	theme.set_stylebox("scroll", "VScrollBar", empty_sb)
+	theme.set_stylebox("scroll", "HScrollBar", empty_sb)
+	theme.set_stylebox("scroll_focus", "VScrollBar", empty_sb)
+	theme.set_stylebox("scroll_focus", "HScrollBar", empty_sb)
+	theme.set_stylebox("grabber", "VScrollBar", empty_sb)
+	theme.set_stylebox("grabber", "HScrollBar", empty_sb)
+	theme.set_stylebox("grabber_highlight", "VScrollBar", empty_sb)
+	theme.set_stylebox("grabber_highlight", "HScrollBar", empty_sb)
+	theme.set_stylebox("grabber_pressed", "VScrollBar", empty_sb)
+	theme.set_stylebox("grabber_pressed", "HScrollBar", empty_sb)
+	theme.set_constant("scroll_stylebox_min_size", "ScrollContainer", 0)
 	return theme
+
+
+static func apply_check_button_styles(button: CheckButton) -> void:
+	if button == null:
+		return
+	var off := _btn(SugarStreetColors.SOFT_PEACH, 14, false, false)
+	var on := _btn(SugarStreetColors.MINT_GREEN, 14, false, false)
+	var off_hover := _btn(SugarStreetColors.SOFT_PEACH.lightened(0.08), 14, false, false)
+	var on_hover := _btn(SugarStreetColors.MINT_GREEN.lightened(0.08), 14, false, false)
+	var disabled := _btn(SugarStreetColors.DISABLED_FILL, 14, false, false)
+	var focus := _btn(SugarStreetColors.SOFT_PEACH, 14, true, false)
+	button.add_theme_stylebox_override("normal", off)
+	button.add_theme_stylebox_override("pressed", on)
+	button.add_theme_stylebox_override("hover", off_hover)
+	button.add_theme_stylebox_override("hover_pressed", on_hover)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.add_theme_stylebox_override("focus", focus)
+	button.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_pressed_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_hover_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_hover_pressed_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_disabled_color", SugarStreetColors.DISABLED_TEXT)
+	button.add_theme_color_override("font_focus_color", SugarStreetColors.DARK_TEXT)
+	button.custom_minimum_size = Vector2(
+		maxi(int(button.custom_minimum_size.x), 44),
+		maxi(int(button.custom_minimum_size.y), 44)
+	)
 
 
 static func primary_button_styles() -> Dictionary:

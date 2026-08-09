@@ -75,12 +75,16 @@ func setup(order: OrderTemplate, status: int) -> void:
 	header.add_child(info)
 	var name_l := Label.new()
 	name_l.text = order.customer_name
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	name_l.add_theme_font_size_override("font_size", 16)
 	name_l.add_theme_color_override("font_color", BROWN)
 	info.add_child(name_l)
 	var msg := Label.new()
 	msg.text = '"%s"' % (order.customer_message if order.customer_message != "" else "Please help with my order!")
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	msg.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	msg.add_theme_font_size_override("font_size", 11)
 	msg.add_theme_color_override("font_color", SECONDARY)
 	info.add_child(msg)
@@ -154,6 +158,8 @@ func _clear_children_immediate() -> void:
 func _meta(parent: Control, text: String) -> void:
 	var lbl := Label.new()
 	lbl.text = text
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lbl.add_theme_font_size_override("font_size", 12)
 	lbl.add_theme_color_override("font_color", BROWN)

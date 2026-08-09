@@ -65,6 +65,7 @@ func _ready() -> void:
 	if not board.booster_mode_changed.is_connected(_on_booster_mode_changed):
 		board.booster_mode_changed.connect(_on_booster_mode_changed)
 	call_deferred("_maybe_show_tutorial", "gameplay")
+	call_deferred("_maybe_show_gameplay_feature_tips")
 
 
 func _maybe_show_tutorial(screen_key: String) -> void:
@@ -77,6 +78,7 @@ func _maybe_show_tutorial(screen_key: String) -> void:
 		TutorialManager.advance(GameState.data)
 		GameState.save_now()
 		_tutorial.queue_free()
+		call_deferred("_maybe_show_gameplay_feature_tips")
 	)
 	_tutorial.skip_pressed.connect(func():
 		TutorialManager.skip(GameState.data)
@@ -84,6 +86,18 @@ func _maybe_show_tutorial(screen_key: String) -> void:
 		_tutorial.queue_free()
 	)
 	_tutorial.show_step(str(step.get("title", "")), str(step.get("body", "")))
+
+
+func _maybe_show_gameplay_feature_tips() -> void:
+	## After the linear gameplay step (or when already completed), show one-shot
+	## specials/boosters tips the first time the player is in a puzzle.
+	if TutorialManager.is_active(GameState.data):
+		return
+	if TutorialManager.should_show_feature_tip(GameState.data, "special_pieces"):
+		FeatureTipPresenter.maybe_show(self, "special_pieces")
+		return
+	if TutorialManager.should_show_feature_tip(GameState.data, "boosters"):
+		FeatureTipPresenter.maybe_show(self, "boosters")
 
 
 func _style_board_frame() -> void:

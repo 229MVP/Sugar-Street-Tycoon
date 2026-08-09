@@ -24,10 +24,12 @@ func _ready() -> void:
 	_build()
 	set_selected(selected_tab)
 	_refresh_badges()
-	if not GameState.notifications_changed.is_connected(_refresh_badges):
-		GameState.notifications_changed.connect(_refresh_badges)
-	if not GameState.state_changed.is_connected(_refresh_badges):
-		GameState.state_changed.connect(_refresh_badges)
+	var gs := get_node_or_null("/root/GameState")
+	if gs:
+		if not gs.notifications_changed.is_connected(_refresh_badges):
+			gs.notifications_changed.connect(_refresh_badges)
+		if not gs.state_changed.is_connected(_refresh_badges):
+			gs.state_changed.connect(_refresh_badges)
 
 
 func _build() -> void:
@@ -90,32 +92,42 @@ func set_selected(tab_id: String) -> void:
 
 func _on_tab(tab_id: String) -> void:
 	UiMotion.press_scale(_buttons[tab_id])
-	AudioManager.play_button()
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_button()
+	var router := get_node_or_null("/root/SceneRouter")
 	match tab_id:
 		TAB_SHOP:
 			set_selected(tab_id)
 			tab_selected.emit(tab_id)
-			SceneRouter.go_shop()
+			if router:
+				router.go_shop()
 		TAB_INVENTORY:
 			set_selected(tab_id)
 			tab_selected.emit(tab_id)
-			SceneRouter.go_inventory()
+			if router:
+				router.go_inventory()
 		TAB_ORDERS, TAB_CUSTOMERS:
 			set_selected(tab_id)
 			tab_selected.emit(tab_id)
-			SceneRouter.go_orders()
+			if router:
+				router.go_orders()
 		TAB_EVENTS:
 			if _confirm:
 				_confirm.show_confirm("Coming Soon", "Events unlock later.", "OK", "Close")
 		TAB_RECIPES:
-			SceneRouter.go_recipe_book()
+			if router:
+				router.go_recipe_book()
 
 
 func _refresh_badges() -> void:
+	var gs := get_node_or_null("/root/GameState")
+	if gs == null:
+		return
 	var ready := 0
 	var available := 0
-	for order in GameState.get_visible_orders():
-		var st := GameState.get_order_status(str(order.order_id))
+	for order in gs.get_visible_orders():
+		var st: int = int(gs.get_order_status(str(order.order_id)))
 		if st == SaveData.OrderStatus.READY_TO_COMPLETE:
 			ready += 1
 		elif st in [SaveData.OrderStatus.AVAILABLE, SaveData.OrderStatus.FAILED, SaveData.OrderStatus.SELECTED]:
@@ -123,7 +135,7 @@ func _refresh_badges() -> void:
 	if _badges.has(TAB_CUSTOMERS):
 		_badges[TAB_CUSTOMERS].set_count(ready if ready > 0 else available)
 	if _badges.has(TAB_SHOP):
-		_badges[TAB_SHOP].set_count(GameState.affordable_upgrade_count())
+		_badges[TAB_SHOP].set_count(gs.affordable_upgrade_count())
 	if _badges.has(TAB_INVENTORY):
 		_badges[TAB_INVENTORY].set_count(0)
 	if _badges.has(TAB_EVENTS):

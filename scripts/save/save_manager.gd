@@ -163,6 +163,7 @@ static func _to_dict(data: SaveData) -> Dictionary:
 		"current_screen": data.current_screen,
 		"tutorial_completed": data.tutorial_completed,
 		"tutorial_step": data.tutorial_step,
+		"tutorial_flags": _stringify_keys(data.tutorial_flags),
 		"daily_bonus_state": data.daily_bonus_state.duplicate(true),
 		"booster_inventory": _stringify_keys(data.booster_inventory),
 		"notification_preference": data.notification_preference,
@@ -221,6 +222,7 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 	data.current_screen = str(dict.get("current_screen", ""))
 	data.tutorial_completed = bool(dict.get("tutorial_completed", false))
 	data.tutorial_step = int(dict.get("tutorial_step", 0))
+	data.tutorial_flags = _merge_dict({}, dict.get("tutorial_flags", {}))
 	var daily_bonus: Variant = dict.get("daily_bonus_state", {})
 	data.daily_bonus_state = daily_bonus.duplicate(true) if typeof(daily_bonus) == TYPE_DICTIONARY else {}
 	data.booster_inventory = _merge_dict({}, dict.get("booster_inventory", {}))
@@ -361,6 +363,11 @@ static func _from_dict(dict: Dictionary) -> SaveData:
 		if OS.is_debug_build():
 			print("SaveManager: migrating save v%d → v7 (booster inventory)" % old_version)
 		BoosterManager.ensure_defaults(data)
+	if old_version < 8:
+		if OS.is_debug_build():
+			print("SaveManager: migrating save v%d → v8 (tutorial feature flags)" % old_version)
+		if typeof(data.tutorial_flags) != TYPE_DICTIONARY:
+			data.tutorial_flags = {}
 	data.apply_worker_defaults()
 
 	data.version = SaveData.SAVE_VERSION

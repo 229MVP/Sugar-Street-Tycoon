@@ -21,6 +21,11 @@ func _ready() -> void:
 	if GameState.upgrades and not GameState.upgrades.upgrades_changed.is_connected(_rebuild):
 		GameState.upgrades.upgrades_changed.connect(_rebuild)
 	_rebuild()
+	call_deferred("_show_feature_tip")
+
+
+func _show_feature_tip() -> void:
+	FeatureTipPresenter.maybe_show(self, "upgrades")
 
 
 func _build() -> void:
@@ -59,7 +64,7 @@ func _build() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.name = "UpgradeScroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ScrollHelper.configure_vertical(scroll)
 	vbox.add_child(scroll)
 	_list = VBoxContainer.new()
 	_list.name = "UpgradeList"
