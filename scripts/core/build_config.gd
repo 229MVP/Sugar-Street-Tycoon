@@ -10,13 +10,18 @@ extends RefCounted
 
 ## Public-facing beta version shown to testers (independent of the internal
 ## engineering `config/version` in project.godot).
-const APP_VERSION := "0.1.0"
-## Bump for every new TestFlight build upload.
-const BUILD_NUMBER := 1
+const APP_VERSION := "0.1.0-beta.2"
+## Bump for every new store / device build upload (Android versionCode).
+const BUILD_NUMBER := 2
 ## "development" | "beta" | "production" — informational; gating itself is
 ## always driven by `is_debug_build()` so a mis-set environment string can
 ## never accidentally leave cheats reachable in a release export.
 const ENVIRONMENT := "beta"
+
+## Authoritative Android applicationId / package unique name (export_presets.cfg).
+const ANDROID_PACKAGE_ID := "com.sugarstreettycoon.game"
+## Player-facing Android launcher label (package/name). Not the marketing subtitle.
+const ANDROID_APP_NAME := "Sugar Street Tycoon"
 
 ## Save-file identity. A named slot leaves room for multiple profiles later
 ## without another migration.
