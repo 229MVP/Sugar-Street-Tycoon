@@ -14,6 +14,12 @@ var _confirm: ConfirmPopup
 var _draft_placed: Dictionary = {}
 var _baseline_placed: Dictionary = {}
 
+## Shadows the GameState/AudioManager autoloads with local members so this
+## class compiles when instantiated directly (e.g. from a headless `-s`
+## test) rather than only when reached through the normal scene boot chain.
+@onready var GameState: Node = get_node_or_null("/root/GameState")
+@onready var AudioManager: Node = get_node_or_null("/root/AudioManager")
+
 
 func _ready() -> void:
 	visible = false
@@ -35,33 +41,61 @@ func open_edit(visual: ShopDecorVisual) -> void:
 	AudioManager.play(AudioManager.Sfx.EDIT_MODE_OPENED)
 
 
+const CARD_HEIGHT := 340.0
+
 func _build_if_needed() -> void:
 	if get_child_count() > 0:
 		return
-	var root := MarginContainer.new()
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root.add_theme_constant_override("margin_left", 10)
-	root.add_theme_constant_override("margin_right", 10)
-	root.add_theme_constant_override("margin_top", 8)
-	root.add_theme_constant_override("margin_bottom", 8)
-	add_child(root)
+	# Bottom-sheet card, not a full-screen scrim: the shop visual above must
+	# stay visible AND tappable so the player can pick a highlighted slot
+	# while this instructional/picker card is open. Only the card itself is
+	# opaque, so it never gets visually confused with the HUD/visual behind
+	# it (the literal "collision"), without blocking taps to the slots.
+	var safe := SafeAreaContainer.new()
+	safe.anchor_left = 0.0
+	safe.anchor_right = 1.0
+	safe.anchor_top = 1.0
+	safe.anchor_bottom = 1.0
+	safe.offset_left = 0.0
+	safe.offset_right = 0.0
+	safe.offset_top = -CARD_HEIGHT
+	safe.offset_bottom = 0.0
+	safe.set_min_margins(12, 8, 12, 12)
+	add_child(safe)
+
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
+	safe.add_child(card)
+
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(m, 14)
+	card.add_child(margin)
+
+	# Fixed header (title + live status) — always visible, never scrolls.
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	root.add_child(vbox)
+	vbox.add_theme_constant_override("separation", 6)
+	margin.add_child(vbox)
 
 	var header := Label.new()
 	header.text = "Shop Edit Mode"
 	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	header.add_theme_font_size_override("font_size", 20)
 	header.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
 	vbox.add_child(header)
 
 	_status = Label.new()
+	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
 	vbox.add_child(_status)
 
+	# Bounded scrolling body — the only part that grows/shrinks with content.
 	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 120)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	ScrollHelper.configure_vertical(scroll)
 	vbox.add_child(scroll)
@@ -70,6 +104,7 @@ func _build_if_needed() -> void:
 	_picker.add_theme_constant_override("separation", 6)
 	scroll.add_child(_picker)
 
+	# Fixed footer with reserved space — never overlapped by scroll content.
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	vbox.add_child(row)
@@ -96,7 +131,7 @@ func _build_if_needed() -> void:
 
 
 func _on_slot_pressed(slot_id: String) -> void:
-	var slot := GameState.get_decoration_slot(StringName(slot_id))
+	var slot = GameState.get_decoration_slot(StringName(slot_id))
 	if slot == null:
 		return
 	if not DecorationManager.is_slot_unlocked(slot, GameState.data):
@@ -118,7 +153,7 @@ func _rebuild_picker() -> void:
 		tip.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
 		_picker.add_child(tip)
 		return
-	var slot := GameState.get_decoration_slot(StringName(_selected_slot))
+	var slot = GameState.get_decoration_slot(StringName(_selected_slot))
 	var current := str(GameState.data.placed_decorations.get(_selected_slot, ""))
 	var title := Label.new()
 	title.text = "%s · current: %s" % [slot.display_name, current if current != "" else "Empty"]
@@ -175,7 +210,7 @@ func _request_place(decoration_id: String) -> void:
 
 
 func _do_place(decoration_id: String, replace_existing: bool) -> void:
-	var result := GameState.place_decoration(StringName(decoration_id), StringName(_selected_slot), replace_existing)
+	var result = GameState.place_decoration(StringName(decoration_id), StringName(_selected_slot), replace_existing)
 	if not result.get("ok", false):
 		_status.text = str(result.get("reason", "Could not place."))
 		return
@@ -191,7 +226,7 @@ func _do_place(decoration_id: String, replace_existing: bool) -> void:
 
 
 func _request_remove() -> void:
-	var result := GameState.remove_decoration_from_slot(StringName(_selected_slot))
+	var result = GameState.remove_decoration_from_slot(StringName(_selected_slot))
 	if result.get("ok", false):
 		AudioManager.play(AudioManager.Sfx.DECOR_REMOVED)
 		_draft_placed = GameState.data.placed_decorations.duplicate(true)
@@ -202,7 +237,7 @@ func _request_remove() -> void:
 
 
 func _refresh_status() -> void:
-	var summary := GameState.get_appeal_summary()
+	var summary = GameState.get_appeal_summary()
 	var delta := int(summary["appeal"]) - ShopAppealCalculator.calculate_appeal(GameState.decor_catalog, _baseline_placed)
 	_status.text = "Live Appeal: %d (%s) · Change: %+d%s" % [
 		int(summary["appeal"]),

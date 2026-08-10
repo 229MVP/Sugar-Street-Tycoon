@@ -54,14 +54,22 @@ func _process(delta: float) -> void:
 	rotation = sin(_anim_time * 0.7) * 0.05
 
 
+var _touch_active: bool = false
+
+
 func _on_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
-		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+	## Guard against the emulated mouse event Android generates for every
+	## real touch, which would otherwise double-fire `selected` per tap.
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		_touch_active = st.pressed
+		if st.pressed:
 			selected.emit(worker_id)
 			accept_event()
-	elif event is InputEventScreenTouch:
-		var st := event as InputEventScreenTouch
-		if st.pressed:
+	elif event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			if _touch_active:
+				return
 			selected.emit(worker_id)
 			accept_event()

@@ -99,6 +99,7 @@ func _build() -> void:
 	_top_bar = TopResourceBar.new()
 	vbox.add_child(_top_bar)
 	_top_bar.menu_pressed.connect(_on_menu)
+	_normal_chrome.append(_top_bar)
 
 	var body_scroll := ScrollContainer.new()
 	body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -396,7 +397,7 @@ func _nav_card(parent: Control, title: String, subtitle: String, cb: Callable, w
 	parent.add_child(btn)
 	var badge := NotificationBadgeView.new()
 	btn.add_child(badge)
-	badge.position = Vector2(8, 4)
+	badge.place_top_right(4.0)
 	badge.visible = with_badge
 	return badge
 

@@ -7,6 +7,7 @@ extends CanvasLayer
 const HOST_LAYER := 100
 
 static var _instance: ModalLayer = null
+static var _shared_theme: Theme = null
 var _stack: Array[Control] = []
 
 
@@ -14,6 +15,17 @@ func _enter_tree() -> void:
 	layer = HOST_LAYER
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_instance = self
+
+
+## CanvasLayer breaks Control theme inheritance (it isn't a Control ancestor),
+## so anything reparented here would otherwise silently fall back to Godot's
+## bare default theme — plain white/gray panels, visible scrollbar chrome,
+## and washed-out toggle/slider chrome. Every presented modal gets the app
+## theme directly so it always matches the rest of the game.
+static func _app_theme() -> Theme:
+	if _shared_theme == null:
+		_shared_theme = ThemeFactory.build()
+	return _shared_theme
 
 
 func _exit_tree() -> void:
@@ -77,6 +89,8 @@ func _present(modal: Control) -> void:
 		if previous != null:
 			previous.remove_child(modal)
 		add_child(modal)
+	if modal.theme == null:
+		modal.theme = _app_theme()
 	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.offset_left = 0
 	modal.offset_top = 0

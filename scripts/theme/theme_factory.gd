@@ -30,6 +30,12 @@ static func build() -> Theme:
 	theme.set_stylebox("grabber_area", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN))
 	theme.set_stylebox("grabber_area_highlight", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN.lightened(0.1)))
 	theme.set_stylebox("slider", "HSlider", _bar_bg())
+	# HSlider's draggable knob is an ICON, not a stylebox — Godot's built-in
+	# default grabber icon is a pale system-gray dot that reads as "washed
+	# out"/plain white against our warm palette unless explicitly replaced.
+	theme.set_icon("grabber", "HSlider", _grabber_icon(SugarStreetColors.BAKERY_BROWN))
+	theme.set_icon("grabber_highlight", "HSlider", _grabber_icon(SugarStreetColors.BAKERY_BROWN.lightened(0.15)))
+	theme.set_icon("grabber_disabled", "HSlider", _grabber_icon(SugarStreetColors.DISABLED_TEXT))
 
 	# CheckButton / toggle styling — never fall back to plain white.
 	var check_off := _btn(SugarStreetColors.SOFT_PEACH, 14, false, false)
@@ -44,6 +50,16 @@ static func build() -> Theme:
 	theme.set_stylebox("hover_pressed", "CheckButton", check_on_hover)
 	theme.set_stylebox("disabled", "CheckButton", check_disabled)
 	theme.set_stylebox("focus", "CheckButton", check_focus)
+	# The on/off switch glyph itself is drawn from theme ICONS, separate from
+	# the styleboxes above. Godot's built-in "checked"/"unchecked" icons are
+	# pale system graphics that read as plain white/washed out on our warm
+	# background — replace them with simple, clearly-colored placeholder
+	# track+knob art so every toggle state stays legible (Beta placeholder
+	# art; swappable for final iconography later).
+	theme.set_icon("checked", "CheckButton", _toggle_icon(true, false))
+	theme.set_icon("unchecked", "CheckButton", _toggle_icon(false, false))
+	theme.set_icon("checked_disabled", "CheckButton", _toggle_icon(true, true))
+	theme.set_icon("unchecked_disabled", "CheckButton", _toggle_icon(false, true))
 	theme.set_color("font_color", "CheckButton", SugarStreetColors.DARK_TEXT)
 	theme.set_color("font_pressed_color", "CheckButton", SugarStreetColors.DARK_TEXT)
 	theme.set_color("font_hover_color", "CheckButton", SugarStreetColors.DARK_TEXT)
@@ -82,6 +98,14 @@ static func apply_check_button_styles(button: CheckButton) -> void:
 	button.add_theme_stylebox_override("hover_pressed", on_hover)
 	button.add_theme_stylebox_override("disabled", disabled)
 	button.add_theme_stylebox_override("focus", focus)
+	# Per-instance icon overrides mirror the global theme so a CheckButton
+	# styled this way is correct even if it's ever presented somewhere that
+	# doesn't inherit the app Theme (defense in depth alongside ModalLayer's
+	# own theme assignment).
+	button.add_theme_icon_override("checked", _toggle_icon(true, false))
+	button.add_theme_icon_override("unchecked", _toggle_icon(false, false))
+	button.add_theme_icon_override("checked_disabled", _toggle_icon(true, true))
+	button.add_theme_icon_override("unchecked_disabled", _toggle_icon(false, true))
 	button.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
 	button.add_theme_color_override("font_pressed_color", SugarStreetColors.DARK_TEXT)
 	button.add_theme_color_override("font_hover_color", SugarStreetColors.DARK_TEXT)
@@ -200,3 +224,60 @@ static func _bar_fill(color: Color) -> StyleBoxFlat:
 	s.bg_color = color
 	s.set_corner_radius_all(10)
 	return s
+
+
+static var _toggle_icon_cache: Dictionary = {}
+static var _grabber_icon_cache: Dictionary = {}
+
+
+## Procedural placeholder switch glyph (track + knob) so CheckButton states
+## never fall back to Godot's pale default icon. Cached per (on, disabled)
+## combination since the same four textures are reused everywhere.
+static func _toggle_icon(is_on: bool, disabled: bool) -> ImageTexture:
+	var key := "%s_%s" % [is_on, disabled]
+	if _toggle_icon_cache.has(key):
+		return _toggle_icon_cache[key]
+	var w := 40
+	var h := 22
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var track := SugarStreetColors.DISABLED_FILL if disabled else \
+		(SugarStreetColors.MINT_GREEN if is_on else SugarStreetColors.SOFT_PEACH)
+	var knob := SugarStreetColors.DISABLED_TEXT if disabled else SugarStreetColors.WHITE
+	var radius := h / 2.0
+	for y in range(h):
+		for x in range(w):
+			var center_x: float = radius if x < radius else (w - radius if x > w - radius else x)
+			var d := Vector2(x - center_x, y - radius).length()
+			if d <= radius:
+				img.set_pixel(x, y, track)
+	var knob_center_x := (w - radius) if is_on else radius
+	var knob_radius := radius - 2.0
+	for y in range(h):
+		for x in range(w):
+			var d := Vector2(x - knob_center_x, y - radius).length()
+			if d <= knob_radius:
+				img.set_pixel(x, y, knob)
+	var tex := ImageTexture.create_from_image(img)
+	_toggle_icon_cache[key] = tex
+	return tex
+
+
+## Procedural placeholder slider grabber (filled circle) so HSlider never
+## falls back to Godot's default pale knob icon. Cached per color.
+static func _grabber_icon(color: Color) -> ImageTexture:
+	var key := color.to_html(true)
+	if _grabber_icon_cache.has(key):
+		return _grabber_icon_cache[key]
+	var size := 22
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var radius := size / 2.0 - 1.0
+	var center := Vector2(size / 2.0, size / 2.0)
+	for y in range(size):
+		for x in range(size):
+			if Vector2(x, y).distance_to(center) <= radius:
+				img.set_pixel(x, y, color)
+	var tex := ImageTexture.create_from_image(img)
+	_grabber_icon_cache[key] = tex
+	return tex

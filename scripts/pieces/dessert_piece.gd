@@ -24,6 +24,10 @@ var _dragging: bool = false
 var _press_local: Vector2 = Vector2.ZERO
 var _base_scale: Vector2 = Vector2.ONE
 var _selected: bool = false
+## True between a real touch press and its release. Android also synthesizes
+## a mouse-button event for every touch; without this guard a single tap
+## would select/drag-release the piece twice (once per event type).
+var _touch_active: bool = false
 
 @onready var _sprite: TextureRect = $TextureRect
 @onready var _label: Label = $FallbackLabel
@@ -179,11 +183,26 @@ func _apply_special_overlay() -> void:
 func _on_gui_input(event: InputEvent) -> void:
 	if not input_enabled:
 		return
-	if event is InputEventMouseButton:
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if st.pressed:
+			_touch_active = true
+			_dragging = true
+			_press_local = st.position
+			selected.emit(self)
+			accept_event()
+		elif _dragging:
+			_touch_active = false
+			_dragging = false
+			_emit_drag_if_needed(st.position)
+			accept_event()
+	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mb.pressed:
+			if _touch_active:
+				return
 			_dragging = true
 			_press_local = mb.position
 			selected.emit(self)
@@ -191,17 +210,6 @@ func _on_gui_input(event: InputEvent) -> void:
 		elif _dragging:
 			_dragging = false
 			_emit_drag_if_needed(mb.position)
-			accept_event()
-	elif event is InputEventScreenTouch:
-		var st := event as InputEventScreenTouch
-		if st.pressed:
-			_dragging = true
-			_press_local = st.position
-			selected.emit(self)
-			accept_event()
-		elif _dragging:
-			_dragging = false
-			_emit_drag_if_needed(st.position)
 			accept_event()
 	elif event is InputEventMouseMotion and _dragging:
 		accept_event()

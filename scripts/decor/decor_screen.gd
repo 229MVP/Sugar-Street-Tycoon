@@ -4,8 +4,11 @@ extends Control
 
 const SettingsPopupScene := preload("res://scripts/ui/settings_popup.gd")
 
+const MIN_CARD_WIDTH := 160.0
+
 var _top_bar: TopResourceBar
 var _grid: GridContainer
+var _grid_scroll: ScrollContainer
 var _filters: HBoxContainer
 var _ownership: HBoxContainer
 var _info: Label
@@ -26,6 +29,7 @@ func _ready() -> void:
 	_rebuild()
 	AudioManager.play(AudioManager.Sfx.DECOR_SCREEN_OPENED)
 	resized.connect(_on_resized)
+	_grid_scroll.resized.connect(_on_resized)
 	call_deferred("_on_resized")
 
 
@@ -71,28 +75,36 @@ func _build() -> void:
 	_feedback.add_theme_color_override("font_color", SugarStreetColors.MINT_GREEN)
 	vbox.add_child(_feedback)
 
+	var filters_scroll := ScrollContainer.new()
+	filters_scroll.custom_minimum_size = Vector2(0, 44)
+	ScrollHelper.configure_horizontal(filters_scroll)
+	vbox.add_child(filters_scroll)
 	_filters = HBoxContainer.new()
 	_filters.add_theme_constant_override("separation", 4)
-	vbox.add_child(_filters)
+	filters_scroll.add_child(_filters)
 	for cat in ["All", "Wall", "Counter", "Plants", "Floor", "Lighting", "Seating", "Signage", "Display", "Window"]:
 		_filter_btn(_filters, cat, true)
 
+	var ownership_scroll := ScrollContainer.new()
+	ownership_scroll.custom_minimum_size = Vector2(0, 44)
+	ScrollHelper.configure_horizontal(ownership_scroll)
+	vbox.add_child(ownership_scroll)
 	_ownership = HBoxContainer.new()
 	_ownership.add_theme_constant_override("separation", 4)
-	vbox.add_child(_ownership)
+	ownership_scroll.add_child(_ownership)
 	for own in ["All", "Owned", "Available", "Locked"]:
 		_filter_btn(_ownership, own, false)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ScrollHelper.configure_vertical(scroll)
-	vbox.add_child(scroll)
+	_grid_scroll = ScrollContainer.new()
+	_grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	ScrollHelper.configure_vertical(_grid_scroll)
+	vbox.add_child(_grid_scroll)
 	_grid = GridContainer.new()
 	_grid.columns = 2
 	_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_grid.add_theme_constant_override("h_separation", 8)
 	_grid.add_theme_constant_override("v_separation", 8)
-	scroll.add_child(_grid)
+	_grid_scroll.add_child(_grid)
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
@@ -298,6 +310,15 @@ func _on_remove_from_details(decoration_id: String) -> void:
 
 
 func _on_resized() -> void:
-	if _grid == null:
+	if _grid == null or _grid_scroll == null:
 		return
-	_grid.columns = 2 if size.x >= 360 else 1
+	# Compute columns from the scroll body's actual available width instead of
+	# a hardcoded breakpoint, so cards always fit without right-edge clipping
+	# regardless of viewport/aspect. Never fixed at 2 columns wider than the
+	# viewport can actually show.
+	var available := _grid_scroll.size.x
+	if available <= 0.0:
+		available = maxf(0.0, size.x - 24.0)
+	var separation := float(_grid.get_theme_constant("h_separation"))
+	var columns := int(floor((available + separation) / (MIN_CARD_WIDTH + separation)))
+	_grid.columns = maxi(1, columns)
