@@ -241,7 +241,9 @@ func _build() -> void:
 	_edit_overlay.closed.connect(_exit_edit_mode)
 
 	if GameState.DEBUG_TOOLS_ENABLED:
-		var debug := ShopDebugPanel.new()
+		# Load at runtime after project autoloads are available. This keeps the
+		# debug-only panel out of normal scene dependency compilation.
+		var debug: Control = (load("res://scripts/shop/shop_debug_panel.gd") as GDScript).new()
 		add_child(debug)
 
 
@@ -346,14 +348,21 @@ func _add_station(parent: GridContainer, equipment_id: String, title: String, co
 
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 2)
 	row.add_child(col)
 	var name_l := Label.new()
 	name_l.text = title
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	name_l.add_theme_font_size_override("font_size", 14)
 	name_l.add_theme_color_override("font_color", BROWN)
 	col.add_child(name_l)
 	var lvl := Label.new()
+	lvl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lvl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lvl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lvl.add_theme_font_size_override("font_size", 12)
 	lvl.add_theme_color_override("font_color", SECONDARY)
 	col.add_child(lvl)

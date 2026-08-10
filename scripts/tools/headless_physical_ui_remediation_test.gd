@@ -20,6 +20,8 @@ func _run() -> void:
 	ok = await _test_shop_edit_mode_bottom_sheet() and ok
 	ok = await _test_shop_hub_edit_input_lock() and ok
 	ok = await _test_worker_roster_scroll_configuration() and ok
+	ok = await _test_order_card_button_swipe_scrolls() and ok
+	ok = await _test_shop_debug_hidden_and_station_copy_centered() and ok
 	ok = await _test_badge_corner_anchor_and_caps() and ok
 	ok = await _test_badges_do_not_intersect_copy() and ok
 	ok = await _test_previously_unhosted_popups_on_modal_layer() and ok
@@ -406,6 +408,72 @@ func _test_worker_roster_scroll_configuration() -> bool:
 	roster.queue_free()
 	gs.data.tutorial_flags["workers"] = prior_flag
 	print("[OK] Worker Roster uses the app theme + touch scroll defaults")
+	return true
+
+
+func _test_order_card_button_swipe_scrolls() -> bool:
+	var scroll := ScrollContainer.new()
+	scroll.size = Vector2(336, 180)
+	ScrollHelper.configure_vertical(scroll)
+	root.add_child(scroll)
+	var list := VBoxContainer.new()
+	scroll.add_child(list)
+	var card = (load("res://scenes/orders/order_card.tscn") as PackedScene).instantiate()
+	list.add_child(card)
+	var gs := root.get_node_or_null("/root/GameState")
+	if gs == null:
+		push_error("GameState missing for order-card scroll test")
+		return false
+	var order: OrderTemplate = gs.catalog.get_order(&"order_mia_001")
+	card.setup(order, SaveData.OrderStatus.AVAILABLE)
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(336, 500)
+	list.add_child(spacer)
+	await process_frame
+	await process_frame
+	var action := card.find_children("*", "Button", true, false).back() as Button
+	var press := InputEventScreenTouch.new()
+	press.pressed = true
+	press.position = Vector2(200, 150)
+	action.emit_signal("gui_input", press)
+	var drag := InputEventScreenDrag.new()
+	drag.position = Vector2(200, 80)
+	action.emit_signal("gui_input", drag)
+	if scroll.scroll_vertical <= 0:
+		push_error("Order action button swallowed its vertical finger swipe")
+		return false
+	var release := InputEventScreenTouch.new()
+	release.pressed = false
+	release.position = drag.position
+	action.emit_signal("gui_input", release)
+	scroll.queue_free()
+	print("[OK] Order-card button swipes move the customer list")
+	return true
+
+
+func _test_shop_debug_hidden_and_station_copy_centered() -> bool:
+	var debug = (load("res://scripts/shop/shop_debug_panel.gd") as GDScript).new()
+	root.add_child(debug)
+	await process_frame
+	if debug.visible:
+		push_error("Shop debug panel still covers the shop when a debug APK opens")
+		return false
+	debug.queue_free()
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.size = Vector2(336, 100)
+	root.add_child(grid)
+	var hub: Control = (load("res://scripts/shop/shop_hub.gd") as GDScript).new()
+	hub.call("_add_station", grid, "oven", "Oven", Color.WHITE, "oven")
+	await process_frame
+	var labels := grid.find_children("*", "Label", true, false)
+	for label in labels:
+		if (label as Label).horizontal_alignment != HORIZONTAL_ALIGNMENT_CENTER:
+			push_error("Shop station copy is not centered: %s" % (label as Label).text)
+			return false
+	grid.queue_free()
+	hub.free()
+	print("[OK] Shop debug starts hidden + station labels are centered")
 	return true
 
 

@@ -10,8 +10,14 @@ signal details_pressed(order_id: String)
 const BROWN := Color("#593326")
 const SECONDARY := Color("#8A5A45")
 const LOCKED_GRAY := Color("#817671")
+const SWIPE_CANCEL_DISTANCE := 6.0
 
 var order_id: String = ""
+var _touch_start := Vector2.ZERO
+var _touch_scroll_start: int = 0
+var _touch_active: bool = false
+var _touch_dragged: bool = false
+var _touch_scroll: ScrollContainer
 
 
 func _ready() -> void:
@@ -29,7 +35,10 @@ func setup(order: OrderTemplate, status: int) -> void:
 	modulate.a = 1.0
 	custom_minimum_size = Vector2(0, 160)
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	# Let the outer order list participate in gestures that begin anywhere on
+	# the card. Buttons get an explicit touch router below because Android
+	# otherwise treats their whole 44 px rows as non-scrollable islands.
+	mouse_filter = Control.MOUSE_FILTER_PASS
 
 	var style := ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 14)
 	if status == SaveData.OrderStatus.READY_TO_COMPLETE:
@@ -114,17 +123,27 @@ func setup(order: OrderTemplate, status: int) -> void:
 	details.text = "Details"
 	details.custom_minimum_size = Vector2(90, 44)
 	ThemeFactory.apply_button_styles(details, ThemeFactory.soft_button_styles(), BROWN)
-	details.pressed.connect(func(): details_pressed.emit(order_id))
+	details.mouse_filter = Control.MOUSE_FILTER_PASS
+	details.gui_input.connect(_on_scroll_touch_input.bind(details))
+	details.pressed.connect(func():
+		if not _touch_dragged:
+			details_pressed.emit(order_id)
+	)
 	actions.add_child(details)
 
 	var action := Button.new()
 	action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action.custom_minimum_size = Vector2(0, 44)
+	action.mouse_filter = Control.MOUSE_FILTER_PASS
+	action.gui_input.connect(_on_scroll_touch_input.bind(action))
 	match status:
 		SaveData.OrderStatus.READY_TO_COMPLETE:
 			action.text = "Complete Order"
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-			action.pressed.connect(func(): complete_pressed.emit(order_id))
+			action.pressed.connect(func():
+				if not _touch_dragged:
+					complete_pressed.emit(order_id)
+			)
 		SaveData.OrderStatus.COMPLETED:
 			action.text = "Completed"
 			action.disabled = true
@@ -136,16 +155,68 @@ func setup(order: OrderTemplate, status: int) -> void:
 		SaveData.OrderStatus.FAILED:
 			action.text = "Retry"
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-			action.pressed.connect(func(): start_pressed.emit(order_id))
+			action.pressed.connect(func():
+				if not _touch_dragged:
+					start_pressed.emit(order_id)
+			)
 		SaveData.OrderStatus.SELECTED, SaveData.OrderStatus.LEVEL_IN_PROGRESS:
 			action.text = "Continue"
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-			action.pressed.connect(func(): start_pressed.emit(order_id))
+			action.pressed.connect(func():
+				if not _touch_dragged:
+					start_pressed.emit(order_id)
+			)
 		_:
 			action.text = "Start Order"
 			ThemeFactory.apply_button_styles(action, ThemeFactory.primary_button_styles())
-			action.pressed.connect(func(): start_pressed.emit(order_id))
+			action.pressed.connect(func():
+				if not _touch_dragged:
+					start_pressed.emit(order_id)
+			)
 	actions.add_child(action)
+
+
+## Buttons consume Android screen drags before ScrollContainer sees them.
+## Own the complete touch sequence and route its absolute displacement to the
+## nearest vertical scroll list, while leaving short releases as normal taps.
+func _on_scroll_touch_input(event: InputEvent, source: Control) -> void:
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			_touch_active = true
+			_touch_dragged = false
+			_touch_start = touch.position
+			_touch_scroll = _vertical_scroll_ancestor()
+			_touch_scroll_start = _touch_scroll.scroll_vertical if _touch_scroll else 0
+			source.accept_event()
+		elif _touch_active:
+			_touch_active = false
+			source.accept_event()
+			_touch_scroll = null
+			call_deferred("_clear_touch_dragged")
+	elif event is InputEventScreenDrag and _touch_active:
+		var drag := event as InputEventScreenDrag
+		var displacement := drag.position - _touch_start
+		if displacement.length() >= SWIPE_CANCEL_DISTANCE:
+			_touch_dragged = true
+			if _touch_scroll:
+				_touch_scroll.scroll_vertical = _touch_scroll_start - int(round(displacement.y))
+		source.accept_event()
+
+
+func _vertical_scroll_ancestor() -> ScrollContainer:
+	var candidate := get_parent()
+	while candidate != null:
+		if candidate is ScrollContainer:
+			var scroll := candidate as ScrollContainer
+			if scroll.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+				return scroll
+		candidate = candidate.get_parent()
+	return null
+
+
+func _clear_touch_dragged() -> void:
+	_touch_dragged = false
 
 
 func _clear_children_immediate() -> void:

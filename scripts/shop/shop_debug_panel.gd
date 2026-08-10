@@ -4,8 +4,10 @@ extends Control
 
 
 func _ready() -> void:
+	# Debug APKs are used for physical UI testing too. Never cover the shop on
+	# startup; developers can reveal this panel with the debug-toggle action.
+	visible = false
 	if not GameState.DEBUG_TOOLS_ENABLED:
-		visible = false
 		queue_free()
 		return
 	var panel := PanelContainer.new()
@@ -21,6 +23,7 @@ func _ready() -> void:
 	title.text = "Shop Debug"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
+	_btn(vbox, "Close Debug", hide_panel)
 	_btn(vbox, "+10,000 Coins", func(): GameState.debug_add_coins(10000))
 	_btn(vbox, "+500 Reputation", func(): GameState.debug_add_reputation(500))
 	_btn(vbox, "Set Player Level 8", func(): GameState.debug_set_player_level(8))
@@ -50,6 +53,16 @@ func _ready() -> void:
 		TutorialManager.reset_debug_only(GameState.data)
 		GameState.save_now()
 	)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if GameState.DEBUG_TOOLS_ENABLED and event.is_action_pressed("debug_toggle_panel"):
+		visible = not visible
+		get_viewport().set_input_as_handled()
+
+
+func hide_panel() -> void:
+	visible = false
 
 
 func _open_diagnostics() -> void:
