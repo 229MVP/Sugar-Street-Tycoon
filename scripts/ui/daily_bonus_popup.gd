@@ -23,11 +23,12 @@ func _ready() -> void:
 func show_popup() -> void:
 	_busy = false
 	_refresh()
-	visible = true
-	move_to_front()
+	ModalLayer.present(self)
+	FeatureTipPresenter.maybe_show(self, "daily_bonus")
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
 	_busy = false
 
@@ -138,11 +139,13 @@ func _make_day_card(day: int, status: String) -> PanelContainer:
 	var day_lbl := Label.new()
 	day_lbl.text = "Day %d" % day
 	day_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	day_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	v.add_child(day_lbl)
 
 	var reward_lbl := Label.new()
 	reward_lbl.text = DailyBonusManager.describe_reward(day)
 	reward_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reward_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	reward_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	reward_lbl.add_theme_font_size_override("font_size", 12)
 	v.add_child(reward_lbl)
@@ -156,6 +159,7 @@ func _make_day_card(day: int, status: String) -> PanelContainer:
 		_:
 			state_lbl.text = "Locked"
 	state_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	state_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	state_lbl.add_theme_font_size_override("font_size", 11)
 	v.add_child(state_lbl)
 	return card

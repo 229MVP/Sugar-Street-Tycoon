@@ -32,13 +32,14 @@ func show_pause() -> void:
 	resume_button.disabled = false
 	restart_button.disabled = false
 	_give_up_button.disabled = false
-	visible = true
+	ModalLayer.present(self)
 	modulate.a = 0.0
 	var tween := create_tween()
 	tween.tween_property(self, "modulate:a", 1.0, 0.15)
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
 
 

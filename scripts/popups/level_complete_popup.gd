@@ -20,17 +20,24 @@ var _confetti: Array[ColorRect] = []
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var dim := ColorRect.new()
 	dim.color = Color(0.2, 0.12, 0.1, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(14, 18, 14, 18)
+	add_child(safe)
 
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
 
 	_panel = PanelContainer.new()
-	_panel.custom_minimum_size = Vector2(320, 360)
+	_panel.custom_minimum_size = Vector2(300, 320)
 	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 22))
 	center.add_child(_panel)
 
@@ -44,23 +51,27 @@ func _ready() -> void:
 	_title = Label.new()
 	_title.text = "Level Complete"
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", 24)
 	_title.add_theme_color_override("font_color", SugarStreetColors.WHITE)
 	ribbon.add_child(_title)
 
 	_stars = Label.new()
 	_stars.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_stars.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_stars.add_theme_font_size_override("font_size", 28)
 	_stars.add_theme_color_override("font_color", SugarStreetColors.GOLDEN_YELLOW)
 	vbox.add_child(_stars)
 
 	_score = Label.new()
 	_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_score.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_score.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
 	vbox.add_child(_score)
 
 	_rewards = Label.new()
 	_rewards.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_rewards.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_rewards.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_rewards.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
 	vbox.add_child(_rewards)
@@ -89,12 +100,14 @@ func show_result(score: int, moves_remaining: int, stars: int, coins: int = 0, x
 	]
 	_continue.disabled = false
 	_replay.disabled = false
+	ModalLayer.present(self)
 	_spawn_confetti()
 	UiMotion.popup_in(self, _panel)
 	AudioManager.play_popup()
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
 	for c in _confetti:
 		if is_instance_valid(c):

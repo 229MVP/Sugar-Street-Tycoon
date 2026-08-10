@@ -42,8 +42,7 @@ func _build_ui() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	ScrollHelper.configure_vertical(scroll)
 	margin.add_child(scroll)
 
 	var vbox := VBoxContainer.new()

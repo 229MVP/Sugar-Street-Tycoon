@@ -1,9 +1,7 @@
 class_name TutorialOverlay
 extends Control
-## Reusable full-screen tutorial step overlay. Blocks taps to whatever is
-## underneath (mouse_filter = STOP + full-rect dim) so a player can't
-## accidentally interact with the screen mid-explanation. Any screen can
-## instantiate one, call show_step(), and listen for next_pressed/skip_pressed.
+## Full-screen tutorial step overlay. Presented via ModalLayer so it always
+## sits above screen content and navigation.
 
 signal next_pressed
 signal skip_pressed
@@ -13,6 +11,7 @@ var _body: Label
 var _next_btn: Button
 var _skip_btn: Button
 var _confirm: ConfirmPopup
+var _allow_skip: bool = true
 
 
 func _ready() -> void:
@@ -26,12 +25,17 @@ func _ready() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(16, 20, 16, 20)
+	add_child(safe)
+
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(330, 0)
+	panel.custom_minimum_size = Vector2(300, 0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1, 0.97, 0.93, 1)
 	style.set_corner_radius_all(18)
@@ -50,6 +54,7 @@ func _ready() -> void:
 	_title.add_theme_font_size_override("font_size", 20)
 	_title.add_theme_color_override("font_color", Color(0.35, 0.2, 0.12))
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(_title)
 
@@ -57,19 +62,21 @@ func _ready() -> void:
 	_body.add_theme_font_size_override("font_size", 14)
 	_body.add_theme_color_override("font_color", Color(0.4, 0.3, 0.24))
 	_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(_body)
 
 	_next_btn = Button.new()
 	_next_btn.text = "Got It"
 	_next_btn.custom_minimum_size = Vector2(0, 48)
+	ThemeFactory.apply_button_styles(_next_btn, ThemeFactory.primary_button_styles())
 	vbox.add_child(_next_btn)
 	_next_btn.pressed.connect(_on_next)
 
 	_skip_btn = Button.new()
 	_skip_btn.text = "Skip Tutorial"
 	_skip_btn.custom_minimum_size = Vector2(0, 40)
-	_skip_btn.flat = true
+	ThemeFactory.apply_button_styles(_skip_btn, ThemeFactory.soft_button_styles(), SugarStreetColors.BAKERY_BROWN)
 	vbox.add_child(_skip_btn)
 	_skip_btn.pressed.connect(_on_skip)
 
@@ -77,22 +84,33 @@ func _ready() -> void:
 	add_child(_confirm)
 
 
-func show_step(title: String, body: String) -> void:
+func show_step(title: String, body: String, allow_skip: bool = true) -> void:
 	_title.text = title
 	_body.text = body
-	visible = true
-	AudioManager.play_popup()
+	_allow_skip = allow_skip
+	_skip_btn.visible = allow_skip
+	ModalLayer.present(self)
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_popup()
+
+
+func hide_popup() -> void:
+	ModalLayer.dismiss(self)
+	visible = false
 
 
 func _on_next() -> void:
-	visible = false
+	hide_popup()
 	next_pressed.emit()
 
 
 func _on_skip() -> void:
+	if not _allow_skip:
+		return
 	_confirm.show_confirm(
 		"Skip Tutorial?",
-		"You can always explore the game on your own — this can be re-enabled from developer tools.",
+		"You can explore the bakery on your own anytime. Skipping will not affect your progress or rewards.",
 		"Skip",
 		"Keep Going"
 	)
@@ -101,5 +119,5 @@ func _on_skip() -> void:
 
 
 func _do_skip() -> void:
-	visible = false
+	hide_popup()
 	skip_pressed.emit()

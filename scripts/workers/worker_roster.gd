@@ -31,6 +31,11 @@ func _ready() -> void:
 	unassign_button.pressed.connect(_on_unassign)
 	GameState.state_changed.connect(refresh)
 	refresh()
+	call_deferred("_show_feature_tip")
+
+
+func _show_feature_tip() -> void:
+	FeatureTipPresenter.maybe_show(self, "workers")
 
 
 func refresh() -> void:

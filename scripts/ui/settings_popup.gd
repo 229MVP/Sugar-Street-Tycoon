@@ -59,7 +59,7 @@ func _ready() -> void:
 	# regardless of how many settings rows this panel grows to.
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ScrollHelper.configure_vertical(scroll)
 	outer.add_child(scroll)
 
 	var vbox := VBoxContainer.new()
@@ -69,24 +69,29 @@ func _ready() -> void:
 
 	_music_check = CheckButton.new()
 	_music_check.text = "Music"
+	ThemeFactory.apply_check_button_styles(_music_check)
 	vbox.add_child(_music_check)
 	_music_slider = _labeled_slider(vbox, "Music Volume")
 
 	_sfx_check = CheckButton.new()
 	_sfx_check.text = "Sound Effects"
+	ThemeFactory.apply_check_button_styles(_sfx_check)
 	vbox.add_child(_sfx_check)
 	_sfx_slider = _labeled_slider(vbox, "SFX Volume")
 
 	_vibration_check = CheckButton.new()
 	_vibration_check.text = "Vibration"
+	ThemeFactory.apply_check_button_styles(_vibration_check)
 	vbox.add_child(_vibration_check)
 
 	_motion_check = CheckButton.new()
 	_motion_check.text = "Reduce Motion"
+	ThemeFactory.apply_check_button_styles(_motion_check)
 	vbox.add_child(_motion_check)
 
 	_notifications_check = CheckButton.new()
 	_notifications_check.text = "Notifications"
+	ThemeFactory.apply_check_button_styles(_notifications_check)
 	vbox.add_child(_notifications_check)
 
 	vbox.add_child(HSeparator.new())
@@ -154,46 +159,57 @@ func _labeled_slider(parent: Control, label_text: String) -> HSlider:
 
 func show_settings() -> void:
 	_load_from_state()
-	visible = true
-	AudioManager.play_popup()
+	ModalLayer.present(self)
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_popup()
+	FeatureTipPresenter.maybe_show(self, "settings")
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
 
 
 func _load_from_state() -> void:
-	var s: Dictionary = GameState.data.settings
+	var gs := get_node_or_null("/root/GameState")
+	if gs == null:
+		return
+	var s: Dictionary = gs.data.settings
 	_music_check.button_pressed = bool(s.get("music_enabled", true))
 	_sfx_check.button_pressed = bool(s.get("sfx_enabled", true))
 	_music_slider.value = float(s.get("music_volume", 0.8))
 	_sfx_slider.value = float(s.get("sfx_volume", 0.9))
 	_vibration_check.button_pressed = bool(s.get("vibration", true))
 	_motion_check.button_pressed = bool(s.get("reduce_motion", false))
-	_notifications_check.button_pressed = GameState.data.notification_preference == "enabled"
+	_notifications_check.button_pressed = gs.data.notification_preference == "enabled"
 
 
 func _on_close() -> void:
 	if _busy:
 		return
 	_busy = true
-	GameState.update_settings({
-		"music_enabled": _music_check.button_pressed,
-		"sfx_enabled": _sfx_check.button_pressed,
-		"music_volume": _music_slider.value,
-		"sfx_volume": _sfx_slider.value,
-		"vibration": _vibration_check.button_pressed,
-		"reduce_motion": _motion_check.button_pressed,
-	})
-	GameState.data.notification_preference = "enabled" if _notifications_check.button_pressed else "disabled"
-	GameState.save_now()
+	var gs := get_node_or_null("/root/GameState")
+	if gs:
+		gs.update_settings({
+			"music_enabled": _music_check.button_pressed,
+			"sfx_enabled": _sfx_check.button_pressed,
+			"music_volume": _music_slider.value,
+			"sfx_volume": _sfx_slider.value,
+			"vibration": _vibration_check.button_pressed,
+			"reduce_motion": _motion_check.button_pressed,
+		})
+		gs.data.notification_preference = "enabled" if _notifications_check.button_pressed else "disabled"
+		gs.save_now()
 	hide_popup()
 	closed.emit()
 	_busy = false
 
 
 func _on_privacy_pressed() -> void:
-	AudioManager.play_button()
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_button()
 	_info.show_confirm(
 		"Privacy Policy",
 		"Sugar Street Tycoon is a beta build. A full privacy policy will be published before public release. This build stores progress only on your device.",
@@ -202,7 +218,9 @@ func _on_privacy_pressed() -> void:
 
 
 func _on_support_pressed() -> void:
-	AudioManager.play_button()
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_button()
 	_info.show_confirm(
 		"Support",
 		"Thanks for testing Sugar Street Tycoon! Please report bugs and feedback through your TestFlight invite.",
@@ -211,7 +229,9 @@ func _on_support_pressed() -> void:
 
 
 func _on_reset_pressed() -> void:
-	AudioManager.play_button()
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_button()
 	_confirm.show_confirm(
 		"Reset Save Data?",
 		"This erases shop progress and returns you to starter values. Settings can be kept.",
@@ -223,6 +243,8 @@ func _on_reset_pressed() -> void:
 
 
 func _do_reset() -> void:
-	GameState.reset_save()
+	var gs := get_node_or_null("/root/GameState")
+	if gs:
+		gs.reset_save()
 	reset_confirmed.emit()
 	_load_from_state()

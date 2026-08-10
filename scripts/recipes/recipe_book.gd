@@ -39,6 +39,11 @@ func _ready() -> void:
 	if GameState.has_signal("save_loaded") and not GameState.save_loaded.is_connected(_safe_rebuild):
 		GameState.save_loaded.connect(_safe_rebuild)
 	AudioManager.play(AudioManager.Sfx.SHOP_OPENED)
+	call_deferred("_show_feature_tip")
+
+
+func _show_feature_tip() -> void:
+	FeatureTipPresenter.maybe_show(self, "recipes")
 
 
 func _build_shell() -> void:
@@ -103,7 +108,7 @@ func _build_shell() -> void:
 	_scroll.name = "RecipeScroll"
 	_scroll.custom_minimum_size = Vector2(0, 120)
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ScrollHelper.configure_horizontal(_scroll)
 	vbox.add_child(_scroll)
 
 	_list = HBoxContainer.new()
@@ -149,7 +154,7 @@ func _build_shell() -> void:
 	var details_scroll := ScrollContainer.new()
 	details_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	details_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	details_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ScrollHelper.configure_vertical(details_scroll)
 	_details_panel.add_child(details_scroll)
 
 	_details_label = Label.new()

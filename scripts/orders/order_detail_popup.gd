@@ -17,36 +17,59 @@ var _order_id: String = ""
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var dim := ColorRect.new()
 	dim.color = Color(0.1, 0.08, 0.1, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(14, 18, 14, 18)
+	add_child(safe)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
 	_panel = PanelContainer.new()
-	_panel.custom_minimum_size = Vector2(340, 420)
+	_panel.custom_minimum_size = Vector2(300, 0)
+	_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
 	center.add_child(_panel)
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_bottom", 14)
 	_panel.add_child(margin)
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 10)
-	margin.add_child(vbox)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 10)
+	margin.add_child(outer)
 	_title = Label.new()
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title.add_theme_font_size_override("font_size", 24)
+	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_title.add_theme_font_size_override("font_size", 22)
 	_title.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
-	vbox.add_child(_title)
+	outer.add_child(_title)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, 180)
+	ScrollHelper.configure_vertical(scroll)
+	outer.add_child(scroll)
+	var body_wrap := VBoxContainer.new()
+	body_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(body_wrap)
 	_body = Label.new()
+	_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body.add_theme_font_size_override("font_size", 15)
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_body.add_theme_font_size_override("font_size", 14)
 	_body.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
-	vbox.add_child(_body)
+	body_wrap.add_child(_body)
+
 	_start = Button.new()
 	_start.text = "Start Order"
 	_start.custom_minimum_size = Vector2(0, 48)
@@ -55,7 +78,7 @@ func _ready() -> void:
 		hide_popup()
 		start_pressed.emit(_order_id)
 	)
-	vbox.add_child(_start)
+	outer.add_child(_start)
 	_complete = Button.new()
 	_complete.text = "Complete Order"
 	_complete.custom_minimum_size = Vector2(0, 48)
@@ -64,7 +87,7 @@ func _ready() -> void:
 		hide_popup()
 		complete_pressed.emit(_order_id)
 	)
-	vbox.add_child(_complete)
+	outer.add_child(_complete)
 	_cancel = Button.new()
 	_cancel.text = "Cancel"
 	_cancel.custom_minimum_size = Vector2(0, 44)
@@ -73,14 +96,36 @@ func _ready() -> void:
 		hide_popup()
 		cancelled.emit()
 	)
-	vbox.add_child(_cancel)
+	outer.add_child(_cancel)
+	resized.connect(_clamp_panel_size)
+	call_deferred("_clamp_panel_size")
+
+
+func _clamp_panel_size() -> void:
+	## Keep the panel fully visible on tall/narrow phones inside the safe area.
+	var avail := size
+	if avail.x <= 1.0 or avail.y <= 1.0:
+		avail = get_viewport_rect().size
+	var max_w := mini(340.0, avail.x - 28.0)
+	var max_h := avail.y - 36.0
+	_panel.custom_minimum_size = Vector2(maxi(260.0, max_w - 8.0), 0)
+	_panel.size = Vector2.ZERO
+	# Cap scroll body so Cancel stays on-screen.
+	var scroll := _body.get_parent().get_parent() as ScrollContainer
+	if scroll:
+		scroll.custom_minimum_size = Vector2(0, clampf(max_h * 0.42, 140.0, 320.0))
 
 
 func show_order(order: OrderTemplate, status: int) -> void:
 	_order_id = str(order.order_id)
-	var recipe := GameState.catalog.get_recipe(order.recipe_id)
+	var gs := get_node_or_null("/root/GameState")
+	var recipe = gs.catalog.get_recipe(order.recipe_id) if gs else null
 	_title.text = "Order from %s" % order.customer_name
-	var rewards := GameState.preview_order_rewards(order) if GameState.has_method("preview_order_rewards") else RewardCalculator.compute_order_rewards(order, GameState.data)
+	var rewards := {}
+	if gs and gs.has_method("preview_order_rewards"):
+		rewards = gs.preview_order_rewards(order)
+	else:
+		rewards = RewardCalculator.compute_order_rewards(order, gs.data if gs else SaveData.create_default())
 	var message := order.customer_message if order.customer_message != "" else "Please help with my order!"
 	var ingredient_lines: PackedStringArray = []
 	for ing_id in order.ingredient_rewards.keys():
@@ -116,11 +161,15 @@ func show_order(order: OrderTemplate, status: int) -> void:
 			_start.text = "Continue Order"
 		_:
 			_start.text = "Start Order"
-	visible = true
-	AudioManager.play_popup()
+	_clamp_panel_size()
+	ModalLayer.present(self)
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_popup()
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
 
 
