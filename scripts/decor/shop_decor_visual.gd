@@ -14,6 +14,12 @@ var _lights: Array = []
 var _slot_nodes: Dictionary = {} ## slot_id -> PanelContainer
 var _edit_mode: bool = false
 var _selected_slot: String = ""
+var _touch_active: bool = false
+
+## Shadows the GameState autoload with a local member so this class compiles
+## when instantiated directly (e.g. from a headless `-s` test) rather than
+## only when reached through the normal scene boot chain.
+@onready var GameState: Node = get_node_or_null("/root/GameState")
 
 
 func _ready() -> void:
@@ -219,10 +225,18 @@ func _layout() -> void:
 func _on_slot_gui(event: InputEvent, slot_id: String) -> void:
 	if not _edit_mode:
 		return
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		slot_pressed.emit(slot_id)
-	elif event is InputEventScreenTouch and event.pressed:
-		slot_pressed.emit(slot_id)
+	## Guard against the emulated mouse event Android generates for every
+	## real touch, which would otherwise double-fire `slot_pressed` per tap.
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		_touch_active = st.pressed
+		if st.pressed:
+			slot_pressed.emit(slot_id)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			if _touch_active:
+				return
+			slot_pressed.emit(slot_id)
 
 
 func _on_appeal(_appeal: int, _tier: String) -> void:

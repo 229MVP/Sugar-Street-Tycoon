@@ -17,6 +17,12 @@ var _remove: Button
 var _decoration_id: String = ""
 var _busy: bool = false
 
+## Shadows GameState/AudioManager with local members so this class compiles
+## when instantiated directly (e.g. from a headless `-s` test) rather than
+## only when reached through the normal scene boot chain.
+@onready var GameState: Node = get_node_or_null("/root/GameState")
+@onready var AudioManager: Node = get_node_or_null("/root/AudioManager")
+
 
 func _ready() -> void:
 	visible = false
@@ -25,14 +31,24 @@ func _ready() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0.1, 0.08, 0.1, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(12, 12, 12, 12)
+	add_child(safe)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	scroll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ScrollHelper.configure_vertical(scroll)
+	center.add_child(scroll)
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(340, 440)
 	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
-	center.add_child(_panel)
+	scroll.add_child(_panel)
 	var margin := MarginContainer.new()
 	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 		margin.add_theme_constant_override(m, 16)
@@ -86,10 +102,10 @@ func _ready() -> void:
 
 func show_decoration(decoration_id: String) -> void:
 	_decoration_id = decoration_id
-	var decor := GameState.get_decoration(StringName(decoration_id))
+	var decor = GameState.get_decoration(StringName(decoration_id))
 	if decor == null:
 		return
-	var owned := GameState.is_decoration_owned(decor.decoration_id)
+	var owned: bool = GameState.is_decoration_owned(decor.decoration_id)
 	var placed_slot := DecorationManager.find_slot_of_decoration(GameState.data, decoration_id)
 	var unlocked := DecorationManager.is_decoration_unlocked(decor, GameState.data)
 	_title.text = decor.display_name
@@ -106,20 +122,21 @@ func show_decoration(decoration_id: String) -> void:
 		"" if placed_slot == "" else "Equipped in: %s" % placed_slot,
 		"" if unlocked or owned else DecorationManager.unlock_reason(decor, GameState.data),
 	])
-	var can_buy := GameState.can_purchase_decoration(decor.decoration_id)
+	var can_buy = GameState.can_purchase_decoration(decor.decoration_id)
 	_buy.visible = not owned
 	_buy.disabled = not can_buy.get("ok", false) or _busy
 	_buy.text = "Purchase · %s" % RewardCalculator.format_coins(decor.purchase_cost)
 	_place.visible = owned
 	_place.disabled = false
 	_remove.visible = placed_slot != ""
-	visible = true
+	ModalLayer.present(self)
 	if not bool(GameState.data.settings.get("reduce_motion", false)):
 		UiMotion.popup_in(self, _panel)
 	AudioManager.play_popup()
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
 
 
@@ -130,7 +147,7 @@ func _on_buy() -> void:
 	_buy.disabled = true
 	var confirm := ConfirmPopup.new()
 	add_child(confirm)
-	var decor := GameState.get_decoration(StringName(_decoration_id))
+	var decor = GameState.get_decoration(StringName(_decoration_id))
 	confirm.show_confirm(
 		"Buy %s?" % decor.display_name,
 		"Spend %s coins? This cannot be refunded." % RewardCalculator.format_coins(decor.purchase_cost),
@@ -138,7 +155,7 @@ func _on_buy() -> void:
 		"Cancel"
 	)
 	confirm.confirmed.connect(func():
-		var result := GameState.purchase_decoration(StringName(_decoration_id))
+		var result = GameState.purchase_decoration(StringName(_decoration_id))
 		_busy = false
 		confirm.queue_free()
 		if result.get("ok", false):

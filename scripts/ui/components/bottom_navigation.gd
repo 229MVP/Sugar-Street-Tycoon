@@ -74,7 +74,7 @@ func _add_tab(parent: HBoxContainer, id: String, icon: String, label: String) ->
 	_buttons[id] = btn
 	var badge := NotificationBadgeView.new()
 	btn.add_child(badge)
-	badge.position = Vector2(4, 2)
+	badge.place_top_right(2.0)
 	_badges[id] = badge
 
 

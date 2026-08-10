@@ -11,6 +11,12 @@ var _title: Label
 var _body: Label
 var _upgrade: Button
 
+## Shadows GameState/AudioManager with local members so this class compiles
+## when instantiated directly (e.g. from a headless `-s` test) rather than
+## only when reached through the normal scene boot chain.
+@onready var GameState: Node = get_node_or_null("/root/GameState")
+@onready var AudioManager: Node = get_node_or_null("/root/AudioManager")
+
 
 func _ready() -> void:
 	visible = false
@@ -19,14 +25,24 @@ func _ready() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0.1, 0.08, 0.1, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(12, 12, 12, 12)
+	add_child(safe)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	scroll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ScrollHelper.configure_vertical(scroll)
+	center.add_child(scroll)
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(340, 420)
 	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
-	center.add_child(_panel)
+	scroll.add_child(_panel)
 	var margin := MarginContainer.new()
 	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 		margin.add_theme_constant_override(m, 16)
@@ -61,8 +77,8 @@ func _ready() -> void:
 
 
 func show_upgrade() -> void:
-	var check := GameState.can_upgrade_shop_level()
-	var current := GameState.data.shop_level
+	var check = GameState.can_upgrade_shop_level()
+	var current: int = GameState.data.shop_level
 	if current >= ShopLevelRules.MAX_SHOP_LEVEL:
 		_title.text = "Shop Maxed"
 		_body.text = "Your bakery is already Shop Level 5."
@@ -92,18 +108,19 @@ func show_upgrade() -> void:
 			"" if check.get("ok", false) else ("Blocked: %s" % check.get("reason", "")),
 		])
 		_upgrade.disabled = not check.get("ok", false)
-	visible = true
+	ModalLayer.present(self)
 	if not bool(GameState.data.settings.get("reduce_motion", false)):
 		UiMotion.popup_in(self, _panel)
 	AudioManager.play_popup()
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
 
 
 func _on_upgrade() -> void:
-	var result := GameState.upgrade_shop_level()
+	var result = GameState.upgrade_shop_level()
 	if not result.get("ok", false):
 		_body.text = str(result.get("reason", "Upgrade failed."))
 		return

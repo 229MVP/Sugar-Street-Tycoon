@@ -117,11 +117,24 @@ func set_selected(value: bool) -> void:
 		add_theme_stylebox_override("panel", copy)
 
 
+var _touch_active: bool = false
+
+
 func _on_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		selected.emit(recipe_id)
-	elif event is InputEventScreenTouch and event.pressed:
-		selected.emit(recipe_id)
+	## Android synthesizes a mouse-button event from every real touch (so
+	## Buttons/etc. work without a real mouse). Without this guard a single
+	## tap would fire `selected` twice — once from the touch event and once
+	## from its emulated mouse twin.
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		_touch_active = st.pressed
+		if st.pressed:
+			selected.emit(recipe_id)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			if _touch_active:
+				return
+			selected.emit(recipe_id)
 
 
 func _clear_children_immediate() -> void:
