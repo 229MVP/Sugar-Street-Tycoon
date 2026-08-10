@@ -46,7 +46,8 @@ func _ready() -> void:
 	ScrollHelper.configure_vertical(scroll)
 	center.add_child(scroll)
 	_panel = PanelContainer.new()
-	_panel.custom_minimum_size = Vector2(340, 440)
+	# 320px leaves room for 12px safe margins on a 360px viewport.
+	_panel.custom_minimum_size = Vector2(320, 440)
 	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
 	scroll.add_child(_panel)
 	var margin := MarginContainer.new()
@@ -138,6 +139,11 @@ func show_decoration(decoration_id: String) -> void:
 func hide_popup() -> void:
 	ModalLayer.dismiss(self)
 	visible = false
+
+
+func request_close_from_back() -> void:
+	hide_popup()
+	closed.emit()
 
 
 func _on_buy() -> void:

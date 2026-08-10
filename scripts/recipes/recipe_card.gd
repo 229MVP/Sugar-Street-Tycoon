@@ -9,6 +9,7 @@ const BROWN := Color("#593326")
 const SECONDARY := Color("#8A5A45")
 const CORAL := Color("#E97076")
 const LOCKED_GRAY := Color("#817671")
+const SWIPE_CANCEL_DISTANCE := 10.0
 
 var recipe_id: StringName = &""
 var _selected: bool = false
@@ -18,7 +19,7 @@ var _input_wired: bool = false
 func _ready() -> void:
 	visible = true
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_PASS
 	if custom_minimum_size.y < 88.0:
 		custom_minimum_size = Vector2(160, 100)
 	if not _input_wired:
@@ -33,7 +34,7 @@ func setup(recipe: RecipeData, unlocked: bool, is_selected: bool = false) -> voi
 	visible = true
 	custom_minimum_size = Vector2(160, 100)
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_PASS
 	if not _input_wired:
 		gui_input.connect(_on_gui_input)
 		_input_wired = true
@@ -118,6 +119,14 @@ func set_selected(value: bool) -> void:
 
 
 var _touch_active: bool = false
+var _touch_start := Vector2.ZERO
+var _touch_cancelled: bool = false
+var _suppress_emulated_mouse: bool = false
+var _mouse_active: bool = false
+var _mouse_start := Vector2.ZERO
+var _mouse_cancelled: bool = false
+var _touch_scroll: ScrollContainer
+var _touch_scroll_start: int = 0
 
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -127,14 +136,68 @@ func _on_gui_input(event: InputEvent) -> void:
 	## from its emulated mouse twin.
 	if event is InputEventScreenTouch:
 		var st := event as InputEventScreenTouch
-		_touch_active = st.pressed
 		if st.pressed:
-			selected.emit(recipe_id)
+			_touch_active = true
+			_touch_start = st.position
+			_touch_cancelled = false
+			_suppress_emulated_mouse = true
+			_touch_scroll = _horizontal_scroll_ancestor()
+			_touch_scroll_start = _touch_scroll.scroll_horizontal if _touch_scroll else 0
+			# This card manually owns the entire touch sequence; do not let the
+			# parent ScrollContainer receive a down event without its matching up.
+			accept_event()
+		elif _touch_active:
+			if st.position.distance_to(_touch_start) > SWIPE_CANCEL_DISTANCE:
+				_touch_cancelled = true
+			_touch_active = false
+			if not _touch_cancelled:
+				selected.emit(recipe_id)
+			accept_event()
+			_touch_scroll = null
+			call_deferred("_clear_emulated_mouse_guard")
+	elif event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if _touch_active:
+			if drag.position.distance_to(_touch_start) > SWIPE_CANCEL_DISTANCE:
+				_touch_cancelled = true
+				# Route the drag to the horizontal recipe strip directly. Using the
+				# gesture's absolute displacement avoids doubling native movement.
+				if _touch_scroll:
+					_touch_scroll.scroll_horizontal = _touch_scroll_start - int(round(drag.position.x - _touch_start.x))
+			accept_event()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			if _touch_active:
-				return
-			selected.emit(recipe_id)
+		var mouse_button := event as InputEventMouseButton
+		if _suppress_emulated_mouse:
+			return
+		if mouse_button.pressed:
+			_mouse_active = true
+			_mouse_start = mouse_button.position
+			_mouse_cancelled = false
+		elif _mouse_active:
+			if mouse_button.position.distance_to(_mouse_start) > SWIPE_CANCEL_DISTANCE:
+				_mouse_cancelled = true
+			_mouse_active = false
+			if not _mouse_cancelled:
+				selected.emit(recipe_id)
+	elif event is InputEventMouseMotion and _mouse_active:
+		var motion := event as InputEventMouseMotion
+		if motion.position.distance_to(_mouse_start) > SWIPE_CANCEL_DISTANCE:
+			_mouse_cancelled = true
+
+
+func _clear_emulated_mouse_guard() -> void:
+	_suppress_emulated_mouse = false
+
+
+func _horizontal_scroll_ancestor() -> ScrollContainer:
+	var candidate := get_parent()
+	while candidate != null:
+		if candidate is ScrollContainer:
+			var scroll := candidate as ScrollContainer
+			if scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+				return scroll
+		candidate = candidate.get_parent()
+	return null
 
 
 func _clear_children_immediate() -> void:

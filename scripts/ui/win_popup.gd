@@ -71,3 +71,7 @@ func show_result(score: int, moves_remaining: int, stars: int = 1) -> void:
 func hide_popup() -> void:
 	ModalLayer.dismiss(self)
 	visible = false
+
+
+func request_close_from_back() -> void:
+	_on_continue()

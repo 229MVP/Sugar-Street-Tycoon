@@ -27,9 +27,9 @@ static func build() -> Theme:
 	theme.set_stylebox("background", "ProgressBar", _bar_bg())
 	theme.set_stylebox("fill", "ProgressBar", _bar_fill(SugarStreetColors.GOLDEN_YELLOW))
 
-	theme.set_stylebox("grabber_area", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN))
-	theme.set_stylebox("grabber_area_highlight", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN.lightened(0.1)))
-	theme.set_stylebox("slider", "HSlider", _bar_bg())
+	theme.set_stylebox("grabber_area", "HSlider", _slider_track(SugarStreetColors.MINT_GREEN))
+	theme.set_stylebox("grabber_area_highlight", "HSlider", _slider_track(SugarStreetColors.MINT_GREEN.lightened(0.1)))
+	theme.set_stylebox("slider", "HSlider", _slider_track(SugarStreetColors.SOFT_PEACH))
 	# HSlider's draggable knob is an ICON, not a stylebox — Godot's built-in
 	# default grabber icon is a pale system-gray dot that reads as "washed
 	# out"/plain white against our warm palette unless explicitly replaced.
@@ -43,7 +43,7 @@ static func build() -> Theme:
 	var check_off_hover := _btn(SugarStreetColors.SOFT_PEACH.lightened(0.08), 14, false, false)
 	var check_on_hover := _btn(SugarStreetColors.MINT_GREEN.lightened(0.08), 14, false, false)
 	var check_disabled := _btn(SugarStreetColors.DISABLED_FILL, 14, false, false)
-	var check_focus := _btn(SugarStreetColors.SOFT_PEACH, 14, true, false)
+	var check_focus := _focus_outline(14)
 	theme.set_stylebox("normal", "CheckButton", check_off)
 	theme.set_stylebox("pressed", "CheckButton", check_on)
 	theme.set_stylebox("hover", "CheckButton", check_off_hover)
@@ -91,7 +91,7 @@ static func apply_check_button_styles(button: CheckButton) -> void:
 	var off_hover := _btn(SugarStreetColors.SOFT_PEACH.lightened(0.08), 14, false, false)
 	var on_hover := _btn(SugarStreetColors.MINT_GREEN.lightened(0.08), 14, false, false)
 	var disabled := _btn(SugarStreetColors.DISABLED_FILL, 14, false, false)
-	var focus := _btn(SugarStreetColors.SOFT_PEACH, 14, true, false)
+	var focus := _focus_outline(14)
 	button.add_theme_stylebox_override("normal", off)
 	button.add_theme_stylebox_override("pressed", on)
 	button.add_theme_stylebox_override("hover", off_hover)
@@ -226,6 +226,29 @@ static func _bar_fill(color: Color) -> StyleBoxFlat:
 	return s
 
 
+## HSlider does not infer a visible track thickness from the Control height.
+## Give the track its own non-zero minimum height so it remains visible in
+## normal, highlighted, and disabled-looking settings rows on Android.
+static func _slider_track(color: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = color
+	s.set_corner_radius_all(4)
+	s.content_margin_top = 4
+	s.content_margin_bottom = 4
+	return s
+
+
+## Focus is drawn on top of the current CheckButton state. Keep its center
+## transparent so focusing a checked mint row cannot paint it peach again.
+static func _focus_outline(radius: int) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0, 0, 0, 0)
+	s.set_corner_radius_all(radius)
+	s.set_border_width_all(2)
+	s.border_color = SugarStreetColors.GOLDEN_YELLOW
+	return s
+
+
 static var _toggle_icon_cache: Dictionary = {}
 static var _grabber_icon_cache: Dictionary = {}
 
@@ -241,8 +264,11 @@ static func _toggle_icon(is_on: bool, disabled: bool) -> ImageTexture:
 	var h := 22
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var track := SugarStreetColors.DISABLED_FILL if disabled else \
-		(SugarStreetColors.MINT_GREEN if is_on else SugarStreetColors.SOFT_PEACH)
+	# The switch track must contrast with its row background. The row itself is
+	# peach when off and mint when on, so reusing those colors makes the switch
+	# disappear even though the icon technically exists.
+	var track := SugarStreetColors.LOCKED_GRAY if disabled else \
+		(SugarStreetColors.MINT_GREEN.darkened(0.35) if is_on else SugarStreetColors.WOOD_BROWN)
 	var knob := SugarStreetColors.DISABLED_TEXT if disabled else SugarStreetColors.WHITE
 	var radius := h / 2.0
 	for y in range(h):

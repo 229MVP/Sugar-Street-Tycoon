@@ -115,6 +115,10 @@ func hide_popup() -> void:
 	_confetti.clear()
 
 
+func request_close_from_back() -> void:
+	_on_continue()
+
+
 func _on_continue() -> void:
 	if _busy:
 		return

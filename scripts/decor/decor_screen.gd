@@ -4,10 +4,13 @@ extends Control
 
 const SettingsPopupScene := preload("res://scripts/ui/settings_popup.gd")
 
-const MIN_CARD_WIDTH := 160.0
+const MIN_CARD_WIDTH := 240.0
 
 var _top_bar: TopResourceBar
 var _grid: GridContainer
+## The bounded vertical page body. It deliberately contains the filter rows
+## as well as the catalog so a vertical swipe that begins on a chip can still
+## move the Decor page.
 var _grid_scroll: ScrollContainer
 var _filters: HBoxContainer
 var _ownership: HBoxContainer
@@ -18,6 +21,11 @@ var _details: DecorDetailsPopup
 var _confirm: ConfirmPopup
 var _settings: Control
 var _feedback: Label
+var _filter_touch_start := Vector2.ZERO
+var _filter_start_horizontal: int = 0
+var _filter_start_vertical: int = 0
+var _filter_drag_axis: int = 0 # 0 undecided, 1 horizontal, 2 vertical
+var _filter_gesture_dragged: bool = false
 
 
 func _ready() -> void:
@@ -54,61 +62,83 @@ func _build() -> void:
 	vbox.add_child(_top_bar)
 	_top_bar.menu_pressed.connect(func(): _settings.call("show_settings"))
 
+	# Everything between the fixed resource bar and fixed bottom navigation is
+	# one vertical page. The two chip rows below are nested horizontal scrollers;
+	# their touch router provides a dominant-axis handoff to this page body.
+	_grid_scroll = ScrollContainer.new()
+	_grid_scroll.name = "DecorBodyScroll"
+	_grid_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	ScrollHelper.configure_vertical(_grid_scroll)
+	vbox.add_child(_grid_scroll)
+
+	var body := VBoxContainer.new()
+	body.name = "DecorBody"
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 8)
+	_grid_scroll.add_child(body)
+
 	var title := Label.new()
 	title.text = "Decorate Shop"
 	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
-	vbox.add_child(title)
+	body.add_child(title)
 
 	_info = Label.new()
 	_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_info.add_theme_color_override("font_color", SugarStreetColors.WOOD_BROWN)
-	vbox.add_child(_info)
+	body.add_child(_info)
 
 	var appeal_bar := ProgressBar.new()
 	appeal_bar.name = "AppealBar"
 	appeal_bar.custom_minimum_size = Vector2(0, 14)
 	appeal_bar.show_percentage = false
-	vbox.add_child(appeal_bar)
+	body.add_child(appeal_bar)
 
 	_feedback = Label.new()
+	_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_feedback.add_theme_color_override("font_color", SugarStreetColors.MINT_GREEN)
-	vbox.add_child(_feedback)
+	body.add_child(_feedback)
 
 	var filters_scroll := ScrollContainer.new()
+	filters_scroll.name = "CategoryScroll"
 	filters_scroll.custom_minimum_size = Vector2(0, 44)
+	filters_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ScrollHelper.configure_horizontal(filters_scroll)
-	vbox.add_child(filters_scroll)
+	filters_scroll.gui_input.connect(_on_filter_gesture_input.bind(filters_scroll, filters_scroll))
+	body.add_child(filters_scroll)
 	_filters = HBoxContainer.new()
+	_filters.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_filters.add_theme_constant_override("separation", 4)
 	filters_scroll.add_child(_filters)
 	for cat in ["All", "Wall", "Counter", "Plants", "Floor", "Lighting", "Seating", "Signage", "Display", "Window"]:
 		_filter_btn(_filters, cat, true)
 
 	var ownership_scroll := ScrollContainer.new()
+	ownership_scroll.name = "OwnershipScroll"
 	ownership_scroll.custom_minimum_size = Vector2(0, 44)
+	ownership_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ScrollHelper.configure_horizontal(ownership_scroll)
-	vbox.add_child(ownership_scroll)
+	ownership_scroll.gui_input.connect(_on_filter_gesture_input.bind(ownership_scroll, ownership_scroll))
+	body.add_child(ownership_scroll)
 	_ownership = HBoxContainer.new()
+	_ownership.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_ownership.add_theme_constant_override("separation", 4)
 	ownership_scroll.add_child(_ownership)
 	for own in ["All", "Owned", "Available", "Locked"]:
 		_filter_btn(_ownership, own, false)
 
-	_grid_scroll = ScrollContainer.new()
-	_grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ScrollHelper.configure_vertical(_grid_scroll)
-	vbox.add_child(_grid_scroll)
 	_grid = GridContainer.new()
-	_grid.columns = 2
+	_grid.name = "DecorGrid"
+	_grid.columns = 1
 	_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_grid.add_theme_constant_override("h_separation", 8)
 	_grid.add_theme_constant_override("v_separation", 8)
-	_grid_scroll.add_child(_grid)
+	body.add_child(_grid)
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
-	vbox.add_child(actions)
+	body.add_child(actions)
 	var preview := Button.new()
 	preview.text = "Shop Preview"
 	preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -134,7 +164,7 @@ func _build() -> void:
 	back.custom_minimum_size = Vector2(0, 44)
 	ThemeFactory.apply_button_styles(back, ThemeFactory.secondary_button_styles())
 	back.pressed.connect(func(): SceneRouter.go_shop())
-	vbox.add_child(back)
+	body.add_child(back)
 
 	var nav := BottomNavigation.new()
 	nav.selected_tab = BottomNavigation.TAB_SHOP
@@ -158,9 +188,14 @@ func _filter_btn(parent: HBoxContainer, label: String, is_category: bool) -> voi
 	var b := Button.new()
 	b.text = label
 	b.custom_minimum_size = Vector2(44, 44)
+	# PASS lets the surrounding strip observe finger gestures. The explicit
+	# router below hands dominant vertical drags to the outer page body.
+	b.mouse_filter = Control.MOUSE_FILTER_PASS
 	b.add_theme_font_size_override("font_size", 11)
 	ThemeFactory.apply_button_styles(b, ThemeFactory.soft_button_styles(), SugarStreetColors.DARK_TEXT)
 	b.pressed.connect(func():
+		if _filter_gesture_dragged:
+			return
 		if is_category:
 			_category = label
 			GameState.data.settings["last_decor_category"] = label
@@ -170,6 +205,44 @@ func _filter_btn(parent: HBoxContainer, label: String, is_category: bool) -> voi
 		_rebuild()
 	)
 	parent.add_child(b)
+	var strip := parent.get_parent() as ScrollContainer
+	if strip:
+		b.gui_input.connect(_on_filter_gesture_input.bind(strip, b))
+
+
+## Route Android touch drags that begin on a filter chip by their dominant
+## axis. mouse_force_pass_scroll_events covers wheel events, not screen drags.
+func _on_filter_gesture_input(event: InputEvent, strip: ScrollContainer, source: Control) -> void:
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			_filter_touch_start = touch.position
+			_filter_start_horizontal = strip.scroll_horizontal
+			_filter_start_vertical = _grid_scroll.scroll_vertical if _grid_scroll else 0
+			_filter_drag_axis = 0
+			_filter_gesture_dragged = false
+			# The manual router owns the complete sequence so no ancestor receives
+			# a touch-down without the matching drag/release.
+			source.accept_event()
+		else:
+			source.accept_event()
+			call_deferred("_clear_filter_gesture")
+	elif event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		var displacement := drag.position - _filter_touch_start
+		if _filter_drag_axis == 0 and displacement.length() >= ScrollHelper.TOUCH_SCROLL_DEADZONE:
+			_filter_drag_axis = 1 if absf(displacement.x) >= absf(displacement.y) else 2
+			_filter_gesture_dragged = true
+		if _filter_drag_axis == 1:
+			strip.scroll_horizontal = _filter_start_horizontal - int(round(displacement.x))
+		elif _filter_drag_axis == 2 and _grid_scroll:
+			_grid_scroll.scroll_vertical = _filter_start_vertical - int(round(displacement.y))
+		source.accept_event()
+
+
+func _clear_filter_gesture() -> void:
+	_filter_drag_axis = 0
+	_filter_gesture_dragged = false
 
 
 func _rebuild() -> void:
@@ -231,6 +304,7 @@ func _make_card(decor: DecorationData) -> PanelContainer:
 	var style := ThemeFactory._card(SugarStreetColors.SOFT_IVORY if unlocked or owned else Color(0.92, 0.9, 0.88, 1), 14)
 	card.add_theme_stylebox_override("panel", style)
 	var root := VBoxContainer.new()
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_theme_constant_override("separation", 4)
 	card.add_child(root)
 
@@ -244,6 +318,9 @@ func _make_card(decor: DecorationData) -> PanelContainer:
 	var il := Label.new()
 	il.text = "%s  %s" % [decor.placeholder_symbol, decor.display_name]
 	il.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	il.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	il.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	il.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	il.add_theme_font_size_override("font_size", 13)
 	il.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
 	icon.add_child(il)
@@ -256,6 +333,8 @@ func _make_card(decor: DecorationData) -> PanelContainer:
 	root.add_child(meta)
 
 	var status := Label.new()
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status.add_theme_font_size_override("font_size", 11)
 	status.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
 	if placed != "":
@@ -270,6 +349,8 @@ func _make_card(decor: DecorationData) -> PanelContainer:
 
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(0, 44)
+	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	if owned:
 		btn.text = "Details"
 		ThemeFactory.apply_button_styles(btn, ThemeFactory.soft_button_styles(), SugarStreetColors.DARK_TEXT)
@@ -312,10 +393,10 @@ func _on_remove_from_details(decoration_id: String) -> void:
 func _on_resized() -> void:
 	if _grid == null or _grid_scroll == null:
 		return
-	# Compute columns from the scroll body's actual available width instead of
-	# a hardcoded breakpoint, so cards always fit without right-edge clipping
-	# regardless of viewport/aspect. Never fixed at 2 columns wider than the
-	# viewport can actually show.
+	# Compute columns from the bounded page body's actual available width. A
+	# 240 px floor intentionally makes phone portrait a single-column list;
+	# two narrow cards were wider than the viewport once real decoration names
+	# and requirements contributed their minimum widths.
 	var available := _grid_scroll.size.x
 	if available <= 0.0:
 		available = maxf(0.0, size.x - 24.0)

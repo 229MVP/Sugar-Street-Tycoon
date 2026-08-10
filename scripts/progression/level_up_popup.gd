@@ -71,3 +71,8 @@ func show_level_up(new_level: int, coin_reward: int, features: String) -> void:
 func hide_popup() -> void:
 	ModalLayer.dismiss(self)
 	visible = false
+
+
+func request_close_from_back() -> void:
+	hide_popup()
+	continue_pressed.emit()

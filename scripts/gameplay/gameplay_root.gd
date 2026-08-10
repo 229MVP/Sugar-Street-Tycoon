@@ -237,6 +237,8 @@ func _on_show_loss(progress_text: String) -> void:
 
 func _on_win_continue() -> void:
 	# Mark ready-to-complete in GameState already happened on win via controller.
+	_level_complete.hide_popup()
+	win_popup.hide_popup()
 	if controller.session_order_id != "":
 		SceneRouter.return_to_shop_from_level()
 	else:
@@ -276,6 +278,7 @@ func _do_give_up() -> void:
 
 
 func _on_loss_exit() -> void:
+	loss_popup.hide_popup()
 	if controller.session_order_id != "":
 		SceneRouter.return_to_shop_from_level()
 	else:

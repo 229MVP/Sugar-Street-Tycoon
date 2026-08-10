@@ -10,15 +10,24 @@ var _button: Button
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var dim := ColorRect.new()
 	dim.color = Color(0.1, 0.08, 0.1, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(12, 12, 12, 12)
+	add_child(safe)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(340, 320)
+	panel.custom_minimum_size = Vector2(320, 320)
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
 	center.add_child(panel)
 	var margin := MarginContainer.new()
 	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
@@ -31,13 +40,16 @@ func _ready() -> void:
 	title.text = "Welcome back!"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
 	vbox.add_child(title)
 	_body = Label.new()
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_body.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
 	vbox.add_child(_body)
 	_button = Button.new()
 	_button.text = "Collect"
 	_button.custom_minimum_size = Vector2(0, 48)
+	ThemeFactory.apply_button_styles(_button, ThemeFactory.primary_button_styles())
 	_button.pressed.connect(_on_collect)
 	vbox.add_child(_button)
 
@@ -59,13 +71,13 @@ func show_payload(payload: Dictionary) -> void:
 		RewardCalculator.format_coins(int(payload.get("worker_bonus_coins", 0))),
 		RewardCalculator.format_coins(int(payload.get("applied_coins", payload.get("total_coins", 0)))),
 	]
-	visible = true
+	ModalLayer.present(self)
 	AudioManager.play(AudioManager.Sfx.OFFLINE_EARNINGS)
 	AudioManager.play_popup()
 
 
 func _on_collect() -> void:
-	visible = false
+	hide_popup()
 	GameState.consume_offline_popup()
 	# Collect moves stored coins into wallet.
 	GameState.collect_passive_income()
@@ -73,4 +85,9 @@ func _on_collect() -> void:
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
+
+
+func request_close_from_back() -> void:
+	hide_popup()

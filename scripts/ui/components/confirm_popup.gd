@@ -58,10 +58,7 @@ func _ready() -> void:
 	_no.text = "Cancel"
 	_no.custom_minimum_size = Vector2(120, 44)
 	ThemeFactory.apply_button_styles(_no, ThemeFactory.secondary_button_styles())
-	_no.pressed.connect(func():
-		hide_popup()
-		cancelled.emit()
-	)
+	_no.pressed.connect(_cancel)
 	row.add_child(_no)
 	_yes = Button.new()
 	_yes.text = "Confirm"
@@ -90,6 +87,17 @@ func show_confirm(title: String, body: String, yes_text: String = "Confirm", no_
 func hide_popup() -> void:
 	ModalLayer.dismiss(self)
 	visible = false
+
+
+## Treat Android Back as the Cancel action, not as a silent hide. Callers use
+## this signal to release busy locks and restore the underlying modal state.
+func request_close_from_back() -> void:
+	_cancel()
+
+
+func _cancel() -> void:
+	hide_popup()
+	cancelled.emit()
 
 
 func _audio() -> Node:

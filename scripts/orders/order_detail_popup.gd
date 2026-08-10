@@ -173,6 +173,11 @@ func hide_popup() -> void:
 	visible = false
 
 
+func request_close_from_back() -> void:
+	hide_popup()
+	cancelled.emit()
+
+
 func _status_name(status: int) -> String:
 	match status:
 		SaveData.OrderStatus.AVAILABLE: return "Available"

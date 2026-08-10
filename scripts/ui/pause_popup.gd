@@ -43,6 +43,10 @@ func hide_popup() -> void:
 	visible = false
 
 
+func request_close_from_back() -> void:
+	_on_resume()
+
+
 func _on_resume() -> void:
 	if _busy:
 		return

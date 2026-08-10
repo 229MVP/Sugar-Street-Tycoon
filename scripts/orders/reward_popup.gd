@@ -12,15 +12,23 @@ var _panel: PanelContainer
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var dim := ColorRect.new()
 	dim.color = Color(0.1, 0.08, 0.1, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(12, 12, 12, 12)
+	add_child(safe)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
 	_panel = PanelContainer.new()
-	_panel.custom_minimum_size = Vector2(340, 380)
+	_panel.custom_minimum_size = Vector2(320, 380)
+	_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
 	center.add_child(_panel)
 	var margin := MarginContainer.new()
@@ -65,13 +73,21 @@ func show_rewards(rewards: Dictionary) -> void:
 		int(rewards.get("stars", 0)),
 		ingredients,
 	]
-	visible = true
+	ModalLayer.present(self)
 	_panel.scale = Vector2(0.9, 0.9)
 	_panel.pivot_offset = _panel.size * 0.5
 	var tween := create_tween()
 	tween.tween_property(_panel, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	AudioManager.play_popup()
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_popup()
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false
+
+
+func request_close_from_back() -> void:
+	hide_popup()
+	continue_pressed.emit()

@@ -18,6 +18,7 @@ var _upgrades_badge: NotificationBadgeView
 var _decor_badge: NotificationBadgeView
 var _workers_badge: NotificationBadgeView
 var _preview_host: VBoxContainer
+var _body_scroll: ScrollContainer
 var _station_labels: Dictionary = {}
 var _decor_visual: ShopDecorVisual
 var _progress_panel: PanelContainer
@@ -30,6 +31,11 @@ var _shop_upgrade_popup: ShopLevelUpgradePopup
 var _normal_chrome: Array = []
 var _tutorial: TutorialOverlay
 var _daily_bonus: DailyBonusPopup
+var _edit_active: bool = false
+var _pre_edit_scroll_vertical: int = 0
+var _pre_edit_scroll_mode: int = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+var _pre_edit_button_disabled: Dictionary = {}
+var _pre_edit_mouse_filters: Dictionary = {}
 
 
 func _ready() -> void:
@@ -76,6 +82,9 @@ func _on_tutorial_skipped() -> void:
 
 
 func _build() -> void:
+	_normal_chrome.clear()
+	_pre_edit_button_disabled.clear()
+	_pre_edit_mouse_filters.clear()
 	while get_child_count() > 0:
 		var child := get_child(0)
 		remove_child(child)
@@ -101,14 +110,15 @@ func _build() -> void:
 	_top_bar.menu_pressed.connect(_on_menu)
 	_normal_chrome.append(_top_bar)
 
-	var body_scroll := ScrollContainer.new()
-	body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ScrollHelper.configure_vertical(body_scroll)
-	vbox.add_child(body_scroll)
+	_body_scroll = ScrollContainer.new()
+	_body_scroll.name = "ShopBodyScroll"
+	_body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	ScrollHelper.configure_vertical(_body_scroll)
+	vbox.add_child(_body_scroll)
 	var body := VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 10)
-	body_scroll.add_child(body)
+	_body_scroll.add_child(body)
 
 	# Bakery preview — shop name lives inside the preview header.
 	_decor_visual = ShopDecorVisual.new()
@@ -236,20 +246,76 @@ func _build() -> void:
 
 
 func _enter_edit_mode() -> void:
+	if _edit_active or _edit_overlay == null:
+		return
+	_edit_active = true
+	if _body_scroll:
+		_pre_edit_scroll_vertical = _body_scroll.scroll_vertical
+		_pre_edit_scroll_mode = _body_scroll.vertical_scroll_mode
+		# Edit targets live in the shop preview at the top of the body. Reset to
+		# that known position and lock page scrolling while the sheet is open;
+		# the player's former reading position is restored on exit.
+		_body_scroll.scroll_vertical = 0
+		_body_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	for node in _normal_chrome:
 		if is_instance_valid(node):
 			node.modulate.a = 0.35
-			node.mouse_filter = Control.MOUSE_FILTER_IGNORE if node is Control else node.mouse_filter
+			if node is Control:
+				_pre_edit_mouse_filters[node] = (node as Control).mouse_filter
+				(node as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_disable_non_edit_controls()
 	_edit_overlay.open_edit(_decor_visual)
 
 
 func _exit_edit_mode() -> void:
+	if not _edit_active:
+		return
+	_edit_active = false
 	for node in _normal_chrome:
 		if is_instance_valid(node):
 			node.modulate.a = 1.0
-			if node is Control:
-				node.mouse_filter = Control.MOUSE_FILTER_STOP
+			if node is Control and _pre_edit_mouse_filters.has(node):
+				(node as Control).mouse_filter = int(_pre_edit_mouse_filters[node])
+	_pre_edit_mouse_filters.clear()
+	_restore_non_edit_controls()
+	if _body_scroll:
+		_body_scroll.vertical_scroll_mode = _pre_edit_scroll_mode
+		_body_scroll.scroll_vertical = _pre_edit_scroll_vertical
+		_body_scroll.call_deferred("set", "scroll_vertical", _pre_edit_scroll_vertical)
 	_refresh()
+
+
+func _disable_non_edit_controls() -> void:
+	# A parent set to MOUSE_FILTER_IGNORE does not disable its descendant
+	# buttons. Explicitly lock every button outside the interactive shop visual
+	# and edit sheet, retaining its prior state for exact restoration.
+	for candidate in find_children("*", "BaseButton", true, false):
+		var button := candidate as BaseButton
+		if button == null:
+			continue
+		if _decor_visual and _decor_visual.is_ancestor_of(button):
+			continue
+		if _edit_overlay and _edit_overlay.is_ancestor_of(button):
+			continue
+		if not _pre_edit_button_disabled.has(button):
+			_pre_edit_button_disabled[button] = button.disabled
+		button.disabled = true
+
+
+func _restore_non_edit_controls() -> void:
+	for candidate in _pre_edit_button_disabled.keys():
+		# Refreshes can free/rebuild preview buttons while edit mode is open.
+		# Validate the dictionary key before casting the stale Object reference.
+		if not is_instance_valid(candidate):
+			continue
+		var button := candidate as BaseButton
+		if button != null:
+			button.disabled = bool(_pre_edit_button_disabled[candidate])
+	_pre_edit_button_disabled.clear()
+
+
+func is_edit_mode_active() -> bool:
+	return _edit_active
 
 
 func _celebrate_shop_level(level: int) -> void:
@@ -382,19 +448,58 @@ func _nav_card(parent: Control, title: String, subtitle: String, cb: Callable, w
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.custom_minimum_size = Vector2(0, min_h)
-	btn.text = "%s\n%s" % [title, subtitle]
+	# Native Button text spans the whole card, so an overlaid corner badge can
+	# cover its first line on narrow three-column layouts. Render the copy in a
+	# dedicated padded content area that reserves the badge's full width.
+	btn.text = ""
 	ThemeFactory.apply_button_styles(
 		btn,
 		ThemeFactory.primary_button_styles() if primary else ThemeFactory.soft_button_styles(),
 		SugarStreetColors.WHITE if primary else BROWN
 	)
-	btn.add_theme_font_size_override("font_size", 13)
 	btn.pressed.connect(func():
 		UiMotion.press_scale(btn)
 		AudioManager.play_button()
 		cb.call()
 	)
 	parent.add_child(btn)
+	var content := VBoxContainer.new()
+	content.name = "Content"
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_theme_constant_override("separation", 0)
+	btn.add_child(content)
+	var title_margin := MarginContainer.new()
+	title_margin.name = "TitleMargin"
+	title_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	title_margin.add_theme_constant_override("margin_left", 6)
+	# 42px covers the widest 99+ pill, its inset, and the small bounce scale.
+	title_margin.add_theme_constant_override("margin_right", 42 if with_badge else 6)
+	content.add_child(title_margin)
+	var title_label := Label.new()
+	title_label.name = "TitleLabel"
+	title_label.text = title
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title_label.add_theme_font_size_override("font_size", 13)
+	title_label.add_theme_color_override("font_color", SugarStreetColors.WHITE if primary else BROWN)
+	title_margin.add_child(title_label)
+	var subtitle_label := Label.new()
+	subtitle_label.name = "SubtitleLabel"
+	subtitle_label.text = subtitle
+	subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	subtitle_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	subtitle_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	subtitle_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	subtitle_label.add_theme_font_size_override("font_size", 12)
+	subtitle_label.add_theme_color_override("font_color", SugarStreetColors.WHITE if primary else BROWN)
+	content.add_child(subtitle_label)
 	var badge := NotificationBadgeView.new()
 	btn.add_child(badge)
 	badge.place_top_right(4.0)
@@ -470,6 +575,11 @@ func _refresh() -> void:
 		_decor_badge.set_count(int(GameState.decoration_notification_priority().get("count", 0)))
 	if _workers_badge:
 		_workers_badge.set_count(GameState.affordable_worker_action_count())
+	if _edit_active:
+		# State changes rebuild order preview buttons while an edit draft is
+		# open. Re-apply the lock so freshly created controls cannot navigate
+		# away from the unsaved draft.
+		_disable_non_edit_controls()
 
 
 func _refresh_progress() -> void:

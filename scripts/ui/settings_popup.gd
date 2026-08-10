@@ -28,12 +28,16 @@ func _ready() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(12, 12, 12, 12)
+	add_child(safe)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(340, 560)
+	panel.custom_minimum_size = Vector2(320, 560)
 	panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
 	center.add_child(panel)
 
@@ -158,6 +162,7 @@ func _labeled_slider(parent: Control, label_text: String) -> HSlider:
 
 
 func show_settings() -> void:
+	_busy = false
 	_load_from_state()
 	ModalLayer.present(self)
 	var audio := get_node_or_null("/root/AudioManager")
@@ -169,6 +174,13 @@ func show_settings() -> void:
 func hide_popup() -> void:
 	ModalLayer.dismiss(self)
 	visible = false
+	_busy = false
+
+
+## Android Back is a user dismissal just like the Close button. Persist the
+## values before closing so a toggle cannot appear to revert on reopen.
+func request_close_from_back() -> void:
+	_commit_and_close()
 
 
 func _load_from_state() -> void:
@@ -186,6 +198,10 @@ func _load_from_state() -> void:
 
 
 func _on_close() -> void:
+	_commit_and_close()
+
+
+func _commit_and_close() -> void:
 	if _busy:
 		return
 	_busy = true
@@ -203,7 +219,6 @@ func _on_close() -> void:
 		gs.save_now()
 	hide_popup()
 	closed.emit()
-	_busy = false
 
 
 func _on_privacy_pressed() -> void:

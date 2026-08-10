@@ -33,12 +33,6 @@ func _exit_tree() -> void:
 		_instance = null
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		if handle_back():
-			get_viewport().set_input_as_handled()
-
-
 static func ensure(tree: SceneTree = null) -> ModalLayer:
 	if _instance != null and is_instance_valid(_instance):
 		return _instance
@@ -83,6 +77,12 @@ static func handle_back_static() -> bool:
 	return _instance.handle_back()
 
 
+static func clear_all_static() -> void:
+	if _instance == null or not is_instance_valid(_instance):
+		return
+	_instance.clear_all()
+
+
 func _present(modal: Control) -> void:
 	if modal.get_parent() != self:
 		var previous := modal.get_parent()
@@ -117,11 +117,24 @@ func handle_back() -> bool:
 		return false
 	var top: Control = _stack[_stack.size() - 1]
 	_stack.pop_back()
-	if top.has_method("hide_popup"):
+	if top.has_method("request_close_from_back"):
+		top.call("request_close_from_back")
+	elif top.has_method("hide_popup"):
 		top.call("hide_popup")
 	else:
 		top.visible = false
 	return true
+
+
+## Presented controls are reparented under this persistent host. A scene
+## transition must remove them explicitly or a visible full-screen scrim can
+## outlive its source scene and cover the next screen.
+func clear_all() -> void:
+	_stack.clear()
+	for child in get_children():
+		if child is CanvasItem:
+			(child as CanvasItem).visible = false
+		child.queue_free()
 
 
 func top_modal() -> Control:

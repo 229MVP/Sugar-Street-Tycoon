@@ -118,6 +118,10 @@ func _change(path: String, force: bool = false) -> void:
 		return
 	if not force and current_path == path and get_tree().current_scene != null:
 		return
+	# ModalLayer persists across scene changes, while the controls presented in
+	# it belong to the outgoing screen. Clear them before navigation so no
+	# scrim, popup, or input blocker can orphan itself over the next scene.
+	ModalLayer.clear_all_static()
 	_nav_lock = true
 	current_path = path
 	scene_changed.emit(path)

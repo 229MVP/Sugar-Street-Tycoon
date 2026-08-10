@@ -2,6 +2,7 @@ extends Control
 ## Worker roster: hire, upgrade, assign, remove assignment.
 
 @onready var list: VBoxContainer = %List
+@onready var scroll: ScrollContainer = $Margin/VBox/Split/Scroll
 @onready var detail_label: Label = %DetailLabel
 @onready var hire_button: Button = %HireButton
 @onready var upgrade_button: Button = %UpgradeButton
@@ -18,6 +19,8 @@ var _busy: bool = false
 
 
 func _ready() -> void:
+	theme = ThemeFactory.build()
+	ScrollHelper.configure_vertical(scroll)
 	_confirm = ConfirmPopup.new()
 	confirm_host.add_child(_confirm)
 	back_button.pressed.connect(func():
@@ -56,6 +59,9 @@ func refresh() -> void:
 		if station != WorkerData.Station.NONE:
 			btn.text += " @ %s" % WorkerData.station_to_label(station)
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.custom_minimum_size = Vector2(0, 48)
+		btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		btn.pressed.connect(_select.bind(worker.worker_id))
 		list.add_child(btn)
 	if _selected_id == &"":

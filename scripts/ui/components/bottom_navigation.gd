@@ -66,12 +66,43 @@ func _add_tab(parent: HBoxContainer, id: String, icon: String, label: String) ->
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.custom_minimum_size = Vector2(44, 56)
-	btn.text = "%s\n%s" % [icon, label]
-	btn.add_theme_font_size_override("font_size", 12)
-	btn.clip_text = false
+	btn.text = ""
 	btn.pressed.connect(func(): _on_tab(id))
 	parent.add_child(btn)
 	_buttons[id] = btn
+	var content := VBoxContainer.new()
+	content.name = "Content"
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_theme_constant_override("separation", 0)
+	btn.add_child(content)
+	var icon_margin := MarginContainer.new()
+	icon_margin.name = "IconMargin"
+	icon_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	icon_margin.add_theme_constant_override("margin_left", 2)
+	# Reserve the widest 99+ pill, its inset, and the small bounce scale.
+	icon_margin.add_theme_constant_override("margin_right", 42)
+	content.add_child(icon_margin)
+	var icon_label := Label.new()
+	icon_label.name = "IconLabel"
+	icon_label.text = icon
+	icon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	icon_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	icon_label.add_theme_font_size_override("font_size", 12)
+	icon_margin.add_child(icon_label)
+	var copy := Label.new()
+	copy.name = "ContentLabel"
+	copy.text = label
+	copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	copy.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	copy.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	copy.add_theme_font_size_override("font_size", 11)
+	content.add_child(copy)
 	var badge := NotificationBadgeView.new()
 	btn.add_child(badge)
 	badge.place_top_right(2.0)
@@ -86,7 +117,12 @@ func set_selected(tab_id: String) -> void:
 			ThemeFactory.apply_button_styles(btn, ThemeFactory.primary_button_styles(), SugarStreetColors.WHITE)
 		else:
 			ThemeFactory.apply_button_styles(btn, ThemeFactory.soft_button_styles(), SugarStreetColors.DARK_TEXT)
-		btn.add_theme_font_size_override("font_size", 12)
+		var copy := btn.get_node_or_null("Content/ContentLabel") as Label
+		if copy:
+			copy.add_theme_color_override("font_color", SugarStreetColors.WHITE if id == tab_id else SugarStreetColors.DARK_TEXT)
+		var icon_copy := btn.get_node_or_null("Content/IconMargin/IconLabel") as Label
+		if icon_copy:
+			icon_copy.add_theme_color_override("font_color", SugarStreetColors.WHITE if id == tab_id else SugarStreetColors.DARK_TEXT)
 		btn.custom_minimum_size = Vector2(44, 56)
 
 

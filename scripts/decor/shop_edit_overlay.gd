@@ -13,6 +13,7 @@ var _selected_slot: String = ""
 var _confirm: ConfirmPopup
 var _draft_placed: Dictionary = {}
 var _baseline_placed: Dictionary = {}
+var _return_parent: Node
 
 ## Shadows the GameState/AudioManager autoloads with local members so this
 ## class compiles when instantiated directly (e.g. from a headless `-s`
@@ -23,7 +24,10 @@ var _baseline_placed: Dictionary = {}
 
 func _ready() -> void:
 	visible = false
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	# The full-viewport root is only a layout host. It must never consume taps
+	# in the transparent area above the sheet, because those taps select the
+	# highlighted slots in ShopDecorVisual underneath.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
@@ -33,7 +37,12 @@ func open_edit(visual: ShopDecorVisual) -> void:
 	_draft_placed = _baseline_placed.duplicate(true)
 	_selected_slot = ""
 	_build_if_needed()
-	visible = true
+	_return_parent = get_parent()
+	# Register as the active modal so Android Back cancels the draft. Override
+	# ModalLayer's normal full-screen blocker immediately: only this special
+	# bottom sheet is intentionally click-through outside its card.
+	ModalLayer.present(self)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_visual.set_edit_mode(true)
 	_visual.set_selected_slot("")
 	_refresh_status()
@@ -64,6 +73,8 @@ func _build_if_needed() -> void:
 	add_child(safe)
 
 	var card := PanelContainer.new()
+	card.name = "EditSheetCard"
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	card.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
@@ -255,6 +266,21 @@ func _on_cancel() -> void:
 	_close()
 
 
+func cancel_edit() -> void:
+	## Public cancellation path used by Android Back through ModalLayer.
+	if visible:
+		_on_cancel()
+
+
+func hide_popup() -> void:
+	## ModalLayer calls hide_popup() for the top entry on Android Back.
+	cancel_edit()
+
+
+func is_editing() -> bool:
+	return visible
+
+
 func _on_save() -> void:
 	AudioManager.play(AudioManager.Sfx.EDIT_MODE_SAVED)
 	GameState.save_now()
@@ -265,5 +291,13 @@ func _close() -> void:
 	if _visual:
 		_visual.set_edit_mode(false)
 		_visual.set_selected_slot("")
-	visible = false
+	ModalLayer.dismiss(self)
+	# ModalLayer reparents presented controls to its CanvasLayer. Return the
+	# hidden overlay to its screen so changing scenes frees it normally.
+	if _return_parent != null and is_instance_valid(_return_parent) and get_parent() != _return_parent:
+		var modal_parent := get_parent()
+		if modal_parent != null:
+			modal_parent.remove_child(self)
+		_return_parent.add_child(self)
+	_return_parent = null
 	closed.emit()

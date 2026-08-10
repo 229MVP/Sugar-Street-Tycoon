@@ -60,3 +60,7 @@ func show_result(progress_text: String) -> void:
 func hide_popup() -> void:
 	ModalLayer.dismiss(self)
 	visible = false
+
+
+func request_close_from_back() -> void:
+	_on_exit()

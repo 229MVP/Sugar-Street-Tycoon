@@ -8,6 +8,7 @@ var _grid: GridContainer
 var _claim_button: Button
 var _status_label: Label
 var _busy: bool = false
+@onready var _game_state: Node = get_node_or_null("/root/GameState")
 
 
 func _init() -> void:
@@ -31,6 +32,11 @@ func hide_popup() -> void:
 	ModalLayer.dismiss(self)
 	visible = false
 	_busy = false
+
+
+func request_close_from_back() -> void:
+	hide_popup()
+	closed.emit()
 
 
 func _build() -> void:
@@ -98,10 +104,13 @@ func _build() -> void:
 
 
 func _refresh() -> void:
+	if _game_state == null:
+		push_error("DailyBonusPopup: GameState autoload is unavailable")
+		return
 	for child in _grid.get_children():
 		child.queue_free()
 
-	var state := GameState.data.daily_bonus_state
+	var state: Dictionary = _game_state.data.daily_bonus_state
 	DailyBonusManager.sync_calendar_state(state)
 	for day in range(1, DailyBonusManager.MAX_DAY + 1):
 		_grid.add_child(_make_day_card(day, DailyBonusManager.day_status(state, day)))
@@ -170,15 +179,19 @@ func _on_claim_pressed() -> void:
 		return
 	_busy = true
 	_claim_button.disabled = true
-	var result := DailyBonusManager.claim(GameState.data)
+	if _game_state == null:
+		_status_label.text = "Daily Bonus is temporarily unavailable."
+		_busy = false
+		return
+	var result := DailyBonusManager.claim(_game_state.data)
 	if not bool(result.get("ok", false)):
 		_status_label.text = "Reward already claimed today."
 		_busy = false
 		_refresh()
 		return
-	GameState.save_now()
-	GameState.emit_signal("state_changed")
-	GameState.emit_signal("coins_changed", GameState.data.coins)
+	_game_state.save_now()
+	_game_state.emit_signal("state_changed")
+	_game_state.emit_signal("coins_changed", _game_state.data.coins)
 	_status_label.text = "Day %d claimed: %s" % [
 		int(result.get("day", 1)),
 		DailyBonusManager.describe_reward(int(result.get("day", 1))),
