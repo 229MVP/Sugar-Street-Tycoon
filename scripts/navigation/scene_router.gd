@@ -8,6 +8,7 @@ const GAMEPLAY_SCENE := "res://scenes/main/main.tscn"
 const RECIPE_BOOK_SCENE := "res://scenes/recipes/recipe_book.tscn"
 const UPGRADE_SCENE := "res://scenes/upgrades/upgrades_screen.tscn"
 const INVENTORY_SCENE := "res://scenes/inventory/inventory_screen.tscn"
+const DECOR_SCENE := "res://scenes/decor/decor_screen.tscn"
 const WORKER_ROSTER_SCENE := "res://scenes/workers/worker_roster.tscn"
 
 signal scene_changed(path: String)
@@ -17,6 +18,25 @@ var pending_order_id: String = ""
 var pending_level_config: LevelConfig = null
 var return_after_level_path: String = ORDERS_SCENE
 var _nav_lock: bool = false
+
+
+func _ready() -> void:
+	## Ensure the full-viewport modal host exists for the whole session.
+	call_deferred("_ensure_modal_host")
+
+
+func _ensure_modal_host() -> void:
+	ModalLayer.ensure(get_tree())
+
+
+func _notification(what: int) -> void:
+	## Android system Back: dismiss the top modal before changing scenes.
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if ModalLayer.handle_back_static():
+			get_viewport().set_input_as_handled()
+			return
+		# No modal open — stay on the current screen (store policy: don't quit).
+		get_viewport().set_input_as_handled()
 
 
 func go_path(path: String) -> void:
@@ -50,9 +70,12 @@ func go_inventory() -> void:
 	_change(INVENTORY_SCENE)
 
 
+func go_decor() -> void:
+	_change(DECOR_SCENE)
+
+
 func go_workers() -> void:
-	# Workers are Coming Soon in this UI phase.
-	push_warning("SceneRouter: workers screen gated as Coming Soon")
+	_change(WORKER_ROSTER_SCENE)
 
 
 func start_order_level(order_id: String) -> void:

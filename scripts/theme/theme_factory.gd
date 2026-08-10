@@ -1,6 +1,6 @@
 class_name ThemeFactory
 extends RefCounted
-## Builds the Sugar Street bakery Theme at runtime.
+## Builds the Sugar Street bakery Theme at runtime and for sugar_street_theme.tres.
 
 
 static func build() -> Theme:
@@ -21,43 +21,141 @@ static func build() -> Theme:
 
 	theme.set_stylebox("panel", "PanelContainer", _card(SugarStreetColors.SOFT_IVORY, 18))
 	theme.set_stylebox("panel", "Panel", _card(SugarStreetColors.SOFT_IVORY, 18))
-
 	theme.set_stylebox("panel", "PopupPanel", _card(SugarStreetColors.SOFT_IVORY, 20))
 
 	theme.set_color("font_color", "ProgressBar", SugarStreetColors.DARK_TEXT)
 	theme.set_stylebox("background", "ProgressBar", _bar_bg())
 	theme.set_stylebox("fill", "ProgressBar", _bar_fill(SugarStreetColors.GOLDEN_YELLOW))
 
+	theme.set_stylebox("grabber_area", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN))
+	theme.set_stylebox("grabber_area_highlight", "HSlider", _bar_fill(SugarStreetColors.MINT_GREEN.lightened(0.1)))
+	theme.set_stylebox("slider", "HSlider", _bar_bg())
+	# HSlider's draggable knob is an ICON, not a stylebox — Godot's built-in
+	# default grabber icon is a pale system-gray dot that reads as "washed
+	# out"/plain white against our warm palette unless explicitly replaced.
+	theme.set_icon("grabber", "HSlider", _grabber_icon(SugarStreetColors.BAKERY_BROWN))
+	theme.set_icon("grabber_highlight", "HSlider", _grabber_icon(SugarStreetColors.BAKERY_BROWN.lightened(0.15)))
+	theme.set_icon("grabber_disabled", "HSlider", _grabber_icon(SugarStreetColors.DISABLED_TEXT))
+
+	# CheckButton / toggle styling — never fall back to plain white.
+	var check_off := _btn(SugarStreetColors.SOFT_PEACH, 14, false, false)
+	var check_on := _btn(SugarStreetColors.MINT_GREEN, 14, false, false)
+	var check_off_hover := _btn(SugarStreetColors.SOFT_PEACH.lightened(0.08), 14, false, false)
+	var check_on_hover := _btn(SugarStreetColors.MINT_GREEN.lightened(0.08), 14, false, false)
+	var check_disabled := _btn(SugarStreetColors.DISABLED_FILL, 14, false, false)
+	var check_focus := _btn(SugarStreetColors.SOFT_PEACH, 14, true, false)
+	theme.set_stylebox("normal", "CheckButton", check_off)
+	theme.set_stylebox("pressed", "CheckButton", check_on)
+	theme.set_stylebox("hover", "CheckButton", check_off_hover)
+	theme.set_stylebox("hover_pressed", "CheckButton", check_on_hover)
+	theme.set_stylebox("disabled", "CheckButton", check_disabled)
+	theme.set_stylebox("focus", "CheckButton", check_focus)
+	# The on/off switch glyph itself is drawn from theme ICONS, separate from
+	# the styleboxes above. Godot's built-in "checked"/"unchecked" icons are
+	# pale system graphics that read as plain white/washed out on our warm
+	# background — replace them with simple, clearly-colored placeholder
+	# track+knob art so every toggle state stays legible (Beta placeholder
+	# art; swappable for final iconography later).
+	theme.set_icon("checked", "CheckButton", _toggle_icon(true, false))
+	theme.set_icon("unchecked", "CheckButton", _toggle_icon(false, false))
+	theme.set_icon("checked_disabled", "CheckButton", _toggle_icon(true, true))
+	theme.set_icon("unchecked_disabled", "CheckButton", _toggle_icon(false, true))
+	theme.set_color("font_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_pressed_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_hover_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_hover_pressed_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+	theme.set_color("font_disabled_color", "CheckButton", SugarStreetColors.DISABLED_TEXT)
+	theme.set_color("font_focus_color", "CheckButton", SugarStreetColors.DARK_TEXT)
+
+	# Hide scrollbar chrome globally while keeping scroll input.
+	var empty_sb := StyleBoxEmpty.new()
+	theme.set_stylebox("scroll", "VScrollBar", empty_sb)
+	theme.set_stylebox("scroll", "HScrollBar", empty_sb)
+	theme.set_stylebox("scroll_focus", "VScrollBar", empty_sb)
+	theme.set_stylebox("scroll_focus", "HScrollBar", empty_sb)
+	theme.set_stylebox("grabber", "VScrollBar", empty_sb)
+	theme.set_stylebox("grabber", "HScrollBar", empty_sb)
+	theme.set_stylebox("grabber_highlight", "VScrollBar", empty_sb)
+	theme.set_stylebox("grabber_highlight", "HScrollBar", empty_sb)
+	theme.set_stylebox("grabber_pressed", "VScrollBar", empty_sb)
+	theme.set_stylebox("grabber_pressed", "HScrollBar", empty_sb)
+	theme.set_constant("scroll_stylebox_min_size", "ScrollContainer", 0)
 	return theme
+
+
+static func apply_check_button_styles(button: CheckButton) -> void:
+	if button == null:
+		return
+	var off := _btn(SugarStreetColors.SOFT_PEACH, 14, false, false)
+	var on := _btn(SugarStreetColors.MINT_GREEN, 14, false, false)
+	var off_hover := _btn(SugarStreetColors.SOFT_PEACH.lightened(0.08), 14, false, false)
+	var on_hover := _btn(SugarStreetColors.MINT_GREEN.lightened(0.08), 14, false, false)
+	var disabled := _btn(SugarStreetColors.DISABLED_FILL, 14, false, false)
+	var focus := _btn(SugarStreetColors.SOFT_PEACH, 14, true, false)
+	button.add_theme_stylebox_override("normal", off)
+	button.add_theme_stylebox_override("pressed", on)
+	button.add_theme_stylebox_override("hover", off_hover)
+	button.add_theme_stylebox_override("hover_pressed", on_hover)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.add_theme_stylebox_override("focus", focus)
+	# Per-instance icon overrides mirror the global theme so a CheckButton
+	# styled this way is correct even if it's ever presented somewhere that
+	# doesn't inherit the app Theme (defense in depth alongside ModalLayer's
+	# own theme assignment).
+	button.add_theme_icon_override("checked", _toggle_icon(true, false))
+	button.add_theme_icon_override("unchecked", _toggle_icon(false, false))
+	button.add_theme_icon_override("checked_disabled", _toggle_icon(true, true))
+	button.add_theme_icon_override("unchecked_disabled", _toggle_icon(false, true))
+	button.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_pressed_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_hover_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_hover_pressed_color", SugarStreetColors.DARK_TEXT)
+	button.add_theme_color_override("font_disabled_color", SugarStreetColors.DISABLED_TEXT)
+	button.add_theme_color_override("font_focus_color", SugarStreetColors.DARK_TEXT)
+	button.custom_minimum_size = Vector2(
+		maxi(int(button.custom_minimum_size.x), 44),
+		maxi(int(button.custom_minimum_size.y), 44)
+	)
 
 
 static func primary_button_styles() -> Dictionary:
 	return {
-		"normal": _btn(SugarStreetColors.MINT_GREEN, 20),
-		"hover": _btn(SugarStreetColors.MINT_GREEN.lightened(0.1), 20),
-		"pressed": _btn(SugarStreetColors.MINT_GREEN.darkened(0.1), 20),
-		"disabled": _btn(SugarStreetColors.DISABLED_FILL, 20),
-		"focus": _btn(SugarStreetColors.MINT_GREEN, 20, true),
+		"normal": _btn(SugarStreetColors.MINT_GREEN, 18),
+		"hover": _btn(SugarStreetColors.MINT_GREEN.lightened(0.1), 18),
+		"pressed": _btn(SugarStreetColors.MINT_GREEN.darkened(0.1), 18),
+		"disabled": _btn(SugarStreetColors.DISABLED_FILL, 18),
+		"focus": _btn(SugarStreetColors.MINT_GREEN, 18, true),
 	}
 
 
 static func secondary_button_styles() -> Dictionary:
 	return {
-		"normal": _btn(SugarStreetColors.CORAL_PINK, 18),
-		"hover": _btn(SugarStreetColors.CORAL_PINK.lightened(0.08), 18),
-		"pressed": _btn(SugarStreetColors.CORAL_PINK.darkened(0.08), 18),
-		"disabled": _btn(SugarStreetColors.DISABLED_FILL, 18),
-		"focus": _btn(SugarStreetColors.CORAL_PINK, 18, true),
+		"normal": _btn(SugarStreetColors.CORAL_PINK, 16),
+		"hover": _btn(SugarStreetColors.CORAL_PINK.lightened(0.08), 16),
+		"pressed": _btn(SugarStreetColors.CORAL_PINK.darkened(0.08), 16),
+		"disabled": _btn(SugarStreetColors.DISABLED_FILL, 16),
+		"focus": _btn(SugarStreetColors.CORAL_PINK, 16, true),
+	}
+
+
+static func soft_button_styles() -> Dictionary:
+	return {
+		"normal": _btn(SugarStreetColors.SOFT_IVORY, 14),
+		"hover": _btn(SugarStreetColors.WARM_CREAM, 14),
+		"pressed": _btn(SugarStreetColors.SOFT_PEACH, 14),
+		"disabled": _btn(SugarStreetColors.DISABLED_FILL, 14),
+		"focus": _btn(SugarStreetColors.SOFT_IVORY, 14, true),
 	}
 
 
 static func coral_header_style() -> StyleBoxFlat:
-	return _btn(SugarStreetColors.CORAL_PINK, 16, false, false)
+	return _btn(SugarStreetColors.CORAL_PINK, 14, false, false)
 
 
 static func wood_panel_style() -> StyleBoxFlat:
 	var s := _card(SugarStreetColors.WOOD_BROWN, 14)
 	s.bg_color = SugarStreetColors.WOOD_BROWN
+	s.border_color = SugarStreetColors.BAKERY_BROWN
 	return s
 
 
@@ -69,7 +167,10 @@ static func apply_button_styles(button: Button, styles: Dictionary, font_color: 
 	button.add_theme_color_override("font_pressed_color", font_color)
 	button.add_theme_color_override("font_focus_color", font_color)
 	button.add_theme_color_override("font_disabled_color", SugarStreetColors.DISABLED_TEXT)
-	button.custom_minimum_size = Vector2(maxi(int(button.custom_minimum_size.x), 44), maxi(int(button.custom_minimum_size.y), 44))
+	button.custom_minimum_size = Vector2(
+		maxi(int(button.custom_minimum_size.x), 44),
+		maxi(int(button.custom_minimum_size.y), 44)
+	)
 
 
 static func _btn(fill: Color, radius: int, focused: bool = false, shadow: bool = true) -> StyleBoxFlat:
@@ -84,14 +185,14 @@ static func _btn(fill: Color, radius: int, focused: bool = false, shadow: bool =
 		s.shadow_color = SugarStreetColors.SHADOW
 		s.shadow_size = 5
 		s.shadow_offset = Vector2(0, 3)
+	s.border_width_left = 1
+	s.border_width_top = 1
+	s.border_width_right = 1
+	s.border_width_bottom = 1
+	s.border_color = Color(1, 1, 1, 0.35)
 	if focused:
-		s.border_width_left = 2
-		s.border_width_top = 2
-		s.border_width_right = 2
-		s.border_width_bottom = 2
+		s.set_border_width_all(2)
 		s.border_color = SugarStreetColors.GOLDEN_YELLOW
-	s.border_width_top = maxi(s.border_width_top, 1)
-	s.border_color = Color(1, 1, 1, 0.35) if s.border_width_left == 0 else s.border_color
 	return s
 
 
@@ -103,10 +204,7 @@ static func _card(fill: Color, radius: int) -> StyleBoxFlat:
 	s.content_margin_right = 12
 	s.content_margin_top = 10
 	s.content_margin_bottom = 10
-	s.border_width_left = 1
-	s.border_width_top = 1
-	s.border_width_right = 1
-	s.border_width_bottom = 1
+	s.set_border_width_all(1)
 	s.border_color = SugarStreetColors.SOFT_BORDER
 	s.shadow_color = SugarStreetColors.SHADOW
 	s.shadow_size = 8
@@ -126,3 +224,60 @@ static func _bar_fill(color: Color) -> StyleBoxFlat:
 	s.bg_color = color
 	s.set_corner_radius_all(10)
 	return s
+
+
+static var _toggle_icon_cache: Dictionary = {}
+static var _grabber_icon_cache: Dictionary = {}
+
+
+## Procedural placeholder switch glyph (track + knob) so CheckButton states
+## never fall back to Godot's pale default icon. Cached per (on, disabled)
+## combination since the same four textures are reused everywhere.
+static func _toggle_icon(is_on: bool, disabled: bool) -> ImageTexture:
+	var key := "%s_%s" % [is_on, disabled]
+	if _toggle_icon_cache.has(key):
+		return _toggle_icon_cache[key]
+	var w := 40
+	var h := 22
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var track := SugarStreetColors.DISABLED_FILL if disabled else \
+		(SugarStreetColors.MINT_GREEN if is_on else SugarStreetColors.SOFT_PEACH)
+	var knob := SugarStreetColors.DISABLED_TEXT if disabled else SugarStreetColors.WHITE
+	var radius := h / 2.0
+	for y in range(h):
+		for x in range(w):
+			var center_x: float = radius if x < radius else (w - radius if x > w - radius else x)
+			var d := Vector2(x - center_x, y - radius).length()
+			if d <= radius:
+				img.set_pixel(x, y, track)
+	var knob_center_x := (w - radius) if is_on else radius
+	var knob_radius := radius - 2.0
+	for y in range(h):
+		for x in range(w):
+			var d := Vector2(x - knob_center_x, y - radius).length()
+			if d <= knob_radius:
+				img.set_pixel(x, y, knob)
+	var tex := ImageTexture.create_from_image(img)
+	_toggle_icon_cache[key] = tex
+	return tex
+
+
+## Procedural placeholder slider grabber (filled circle) so HSlider never
+## falls back to Godot's default pale knob icon. Cached per color.
+static func _grabber_icon(color: Color) -> ImageTexture:
+	var key := color.to_html(true)
+	if _grabber_icon_cache.has(key):
+		return _grabber_icon_cache[key]
+	var size := 22
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var radius := size / 2.0 - 1.0
+	var center := Vector2(size / 2.0, size / 2.0)
+	for y in range(size):
+		for x in range(size):
+			if Vector2(x, y).distance_to(center) <= radius:
+				img.set_pixel(x, y, color)
+	var tex := ImageTexture.create_from_image(img)
+	_grabber_icon_cache[key] = tex
+	return tex

@@ -16,7 +16,7 @@ func _run() -> void:
 	SaveManager.delete_save()
 	GS.new_game()
 
-	ok = _test_ava_available() and ok
+	ok = _test_lily_available() and ok
 	ok = _test_hire_and_duplicate() and ok
 	ok = _test_upgrade_rarity_and_cap() and ok
 	ok = _test_assignment_rules() and ok
@@ -30,14 +30,14 @@ func _run() -> void:
 	quit(0 if ok else 1)
 
 
-func _test_ava_available() -> bool:
-	var ava = GS.catalog.get_worker(&"ava")
-	if ava == null or not WorkerManager.is_unlocked(ava, GS.data):
-		push_error("Ava should be available at level 1")
+func _test_lily_available() -> bool:
+	var lily = GS.catalog.get_worker(&"lily")
+	if lily == null or not WorkerManager.is_unlocked(lily, GS.data):
+		push_error("Lily should be available at level 1")
 		return false
-	var marcus = GS.catalog.get_worker(&"marcus")
-	if WorkerManager.is_unlocked(marcus, GS.data):
-		push_error("Marcus should be locked at level 1")
+	var marco = GS.catalog.get_worker(&"marco")
+	if WorkerManager.is_unlocked(marco, GS.data):
+		push_error("Marco should be locked at level 1")
 		return false
 	print("[OK] worker unlock gates")
 	return true
@@ -45,20 +45,20 @@ func _test_ava_available() -> bool:
 
 func _test_hire_and_duplicate() -> bool:
 	var before: int = GS.data.coins
-	var result: Dictionary = GS.hire_worker(&"ava")
+	var result: Dictionary = GS.hire_worker(&"lily")
 	if not result.get("ok", false):
-		push_error("hire ava failed: %s" % str(result))
+		push_error("hire lily failed: %s" % str(result))
 		return false
 	if GS.data.coins != before - 300:
 		push_error("hire cost wrong")
 		return false
-	var dup: Dictionary = GS.hire_worker(&"ava")
+	var dup: Dictionary = GS.hire_worker(&"lily")
 	if dup.get("ok", false):
 		push_error("duplicate hire allowed")
 		return false
 	GS.data.coins = 10
 	GS.data.player_level = 2
-	var poor: Dictionary = GS.can_hire_worker(&"marcus")
+	var poor: Dictionary = GS.can_hire_worker(&"marco")
 	if poor.get("ok", false):
 		push_error("insufficient coins should block hire")
 		return false
@@ -69,21 +69,21 @@ func _test_hire_and_duplicate() -> bool:
 func _test_upgrade_rarity_and_cap() -> bool:
 	GS.debug_add_coins(100000)
 	GS.data.player_level = 3
-	GS.hire_worker(&"lily")
-	var lily_cost: int = GS.catalog.get_worker(&"lily").upgrade_cost(1)
+	GS.hire_worker(&"mia")
+	var mia_cost: int = GS.catalog.get_worker(&"mia").upgrade_cost(1)
 	var expected := int(round(250.0 * 1.2))
-	if lily_cost != expected:
-		push_error("rarity multiplier wrong: %d vs %d" % [lily_cost, expected])
+	if mia_cost != expected:
+		push_error("rarity multiplier wrong: %d vs %d" % [mia_cost, expected])
 		return false
 	for i in 9:
-		var up: Dictionary = GS.upgrade_worker(&"lily")
+		var up: Dictionary = GS.upgrade_worker(&"mia")
 		if not up.get("ok", false):
 			push_error("upgrade failed at step %d" % i)
 			return false
-	if GS.get_worker_level(&"lily") != 10:
+	if GS.get_worker_level(&"mia") != 10:
 		push_error("not level 10")
 		return false
-	var capped: Dictionary = GS.can_upgrade_worker(&"lily")
+	var capped: Dictionary = GS.can_upgrade_worker(&"mia")
 	if capped.get("ok", false):
 		push_error("level >10 allowed")
 		return false
@@ -92,16 +92,16 @@ func _test_upgrade_rarity_and_cap() -> bool:
 
 
 func _test_assignment_rules() -> bool:
-	GS.assign_worker(&"ava", WorkerData.Station.OVEN)
-	var bad: Dictionary = WorkerManager.can_assign(GS.catalog.get_worker(&"ava"), GS.data, WorkerData.Station.MIXER)
+	GS.assign_worker(&"lily", WorkerData.Station.OVEN)
+	var bad: Dictionary = WorkerManager.can_assign(GS.catalog.get_worker(&"lily"), GS.data, WorkerData.Station.MIXER)
 	if bad.get("ok", false):
 		push_error("incompatible station allowed")
 		return false
 	GS.data.player_level = 2
 	GS.debug_add_coins(1000)
-	GS.hire_worker(&"marcus")
-	GS.assign_worker(&"marcus", WorkerData.Station.CHECKOUT)
-	var unhired_assign: Dictionary = WorkerManager.can_assign(GS.catalog.get_worker(&"noah"), GS.data, WorkerData.Station.DISPLAY_CASE)
+	GS.hire_worker(&"marco")
+	GS.assign_worker(&"marco", WorkerData.Station.CHECKOUT)
+	var unhired_assign: Dictionary = WorkerManager.can_assign(GS.catalog.get_worker(&"noah"), GS.data, WorkerData.Station.MANAGER)
 	if unhired_assign.get("ok", false):
 		push_error("unhired assign allowed")
 		return false
@@ -115,11 +115,11 @@ func _test_bonuses_only_when_assigned() -> bool:
 	if float(none.get("percent", 0.0)) != 0.0:
 		push_error("unassigned workers granting bonuses")
 		return false
-	GS.assign_worker(&"ava", WorkerData.Station.OVEN)
-	GS.debug_set_worker_level(&"ava", 2)
+	GS.assign_worker(&"marco", WorkerData.Station.CHECKOUT)
+	GS.debug_set_worker_level(&"marco", 2)
 	var active: Dictionary = WorkerBonusCalculator.order_coin_bonus_percent(GS.catalog, GS.data)
 	if absf(float(active.get("percent", 0.0)) - 0.06) > 0.001:
-		push_error("ava lv2 should be 6%%, got %s" % str(active.get("percent")))
+		push_error("marco lv2 should be 6%%, got %s" % str(active.get("percent")))
 		return false
 	print("[OK] worker bonuses")
 	return true
@@ -198,15 +198,15 @@ func _test_migration_and_repair() -> bool:
 	if migrated.coins != 777 or migrated.version != SaveData.SAVE_VERSION:
 		push_error("migration failed")
 		return false
-	if not bool(migrated.worker_unlock_flags.get("ava", false)):
-		push_error("ava unlock default missing")
+	if not bool(migrated.worker_unlock_flags.get("lily", false)):
+		push_error("lily unlock default missing")
 		return false
-	migrated.hired_workers = {"ava": true}
-	migrated.worker_levels = {"ava": 99}
-	migrated.worker_assignments = {"mixer": "ava", "oven": "ava"}
+	migrated.hired_workers = {"lily": true}
+	migrated.worker_levels = {"lily": 99}
+	migrated.worker_assignments = {"mixer": "lily", "oven": "lily"}
 	migrated.stored_passive_coins = -9.0
 	WorkerManager.repair_assignments(GS.catalog, migrated)
-	if int(migrated.worker_levels.get("ava", 1)) != 10:
+	if int(migrated.worker_levels.get("lily", 1)) != 10:
 		push_error("level not clamped")
 		return false
 	if migrated.worker_assignments.has("mixer"):
@@ -221,7 +221,7 @@ func _test_migration_and_repair() -> bool:
 
 func _test_order_rewards_once() -> bool:
 	GS.debug_reset_orders()
-	GS.assign_worker(&"ava", WorkerData.Station.OVEN)
+	GS.assign_worker(&"lily", WorkerData.Station.OVEN)
 	var order_id := "order_mia_001"
 	GS.begin_order_level(order_id)
 	GS.on_level_won(order_id, 500, 10, 20)

@@ -7,17 +7,28 @@ var _title: Label
 var _body: Label
 var _button: Button
 
+## Shadows the AudioManager autoload with a local member so this class
+## compiles when instantiated directly (e.g. from a headless `-s` test)
+## rather than only when reached through the normal scene boot chain.
+@onready var AudioManager: Node = get_node_or_null("/root/AudioManager")
+
 
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var dim := ColorRect.new()
 	dim.color = Color(0.1, 0.08, 0.1, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+	var safe := SafeAreaContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(12, 12, 12, 12)
+	add_child(safe)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	safe.add_child(center)
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(320, 260)
 	center.add_child(panel)
@@ -53,9 +64,10 @@ func show_level_up(new_level: int, coin_reward: int, features: String) -> void:
 		RewardCalculator.format_coins(coin_reward),
 		features,
 	]
-	visible = true
+	ModalLayer.present(self)
 	AudioManager.play_popup()
 
 
 func hide_popup() -> void:
+	ModalLayer.dismiss(self)
 	visible = false

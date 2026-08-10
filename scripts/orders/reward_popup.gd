@@ -21,6 +21,7 @@ func _ready() -> void:
 	add_child(center)
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(340, 380)
+	_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 18))
 	center.add_child(_panel)
 	var margin := MarginContainer.new()
 	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
@@ -32,14 +33,17 @@ func _ready() -> void:
 	_title = Label.new()
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", 26)
-	_title.text = "Order completed"
+	_title.add_theme_color_override("font_color", SugarStreetColors.BAKERY_BROWN)
+	_title.text = "Order Complete"
 	vbox.add_child(_title)
 	_body = Label.new()
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_body.add_theme_color_override("font_color", SugarStreetColors.DARK_TEXT)
 	vbox.add_child(_body)
 	_button = Button.new()
 	_button.text = "Continue"
 	_button.custom_minimum_size = Vector2(0, 48)
+	ThemeFactory.apply_button_styles(_button, ThemeFactory.primary_button_styles())
 	_button.pressed.connect(func():
 		hide_popup()
 		continue_pressed.emit()

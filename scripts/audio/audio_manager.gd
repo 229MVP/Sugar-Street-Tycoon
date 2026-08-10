@@ -20,7 +20,21 @@ enum Sfx {
 	CUSTOMER_ENTER,
 	CUSTOMER_LEAVE,
 	WORKER_NOTIFICATION,
+	DECOR_SCREEN_OPENED,
+	DECOR_PURCHASED,
+	DECOR_PLACED,
+	DECOR_REMOVED,
+	DECOR_REPLACED,
+	SHOP_LEVEL_UPGRADED,
+	SLOT_UNLOCKED,
+	APPEAL_TIER_UP,
+	EDIT_MODE_OPENED,
+	EDIT_MODE_SAVED,
 }
+
+## UI-feedback sounds route to the "UI" bus; everything else routes to "SFX".
+## Buses: Master / Music / SFX / UI (see resources/audio/default_bus_layout.tres).
+const UI_BUS_SFX := [Sfx.BUTTON, Sfx.POPUP_OPENED]
 
 var enabled: bool = true
 var music_enabled: bool = true
@@ -34,10 +48,12 @@ func _ready() -> void:
 	for sfx in Sfx.values():
 		var player := AudioStreamPlayer.new()
 		player.name = "Sfx_%s" % str(sfx)
+		player.bus = "UI" if sfx in UI_BUS_SFX else "SFX"
 		add_child(player)
 		_players[sfx] = player
 	_music_player = AudioStreamPlayer.new()
 	_music_player.name = "MusicPlayer"
+	_music_player.bus = "Music"
 	add_child(_music_player)
 
 

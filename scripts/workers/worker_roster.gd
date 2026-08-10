@@ -31,6 +31,11 @@ func _ready() -> void:
 	unassign_button.pressed.connect(_on_unassign)
 	GameState.state_changed.connect(refresh)
 	refresh()
+	call_deferred("_show_feature_tip")
+
+
+func _show_feature_tip() -> void:
+	FeatureTipPresenter.maybe_show(self, "workers")
 
 
 func refresh() -> void:
@@ -54,7 +59,7 @@ func refresh() -> void:
 		btn.pressed.connect(_select.bind(worker.worker_id))
 		list.add_child(btn)
 	if _selected_id == &"":
-		_select(&"ava")
+		_select(&"lily")
 	else:
 		_select(_selected_id)
 
@@ -125,9 +130,14 @@ func _bonus_text(worker: WorkerData, level: int) -> String:
 		"bonus_ingredients":
 			var chance := worker.primary_bonus_base + worker.primary_bonus_per_level * float(level)
 			lines.append("Bonus ingredient chance %.0f%%" % (chance * 100.0))
+		"bonus_star_chance":
+			var star_chance := worker.primary_bonus_base + worker.primary_bonus_per_level * float(level)
+			lines.append("Bonus star chance %.0f%%" % (star_chance * 100.0))
 	if worker.secondary_bonus_type != StringName():
 		if str(worker.secondary_bonus_type) == "passive_income":
 			lines.append("Passive income +%d%%" % int(worker.secondary_bonus_per_level * float(level) * 100.0))
+		elif str(worker.secondary_bonus_type) == "all_order_rewards":
+			lines.append("All order rewards +%d%%" % int(worker.secondary_bonus_per_level * float(level) * 100.0))
 	return "\n".join(lines)
 
 

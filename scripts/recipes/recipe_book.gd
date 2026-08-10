@@ -1,85 +1,406 @@
 extends Control
-## Recipe book: browse unlock status and purchase unlocks.
+## Recipe Book — scrollable recipe cards with details panel and unlock action.
 
-@onready var list: VBoxContainer = %List
-@onready var detail_label: Label = %DetailLabel
-@onready var unlock_button: Button = %UnlockButton
-@onready var feedback_label: Label = %FeedbackLabel
-@onready var back_button: Button = %BackButton
-@onready var coins_label: Label = %CoinsLabel
-@onready var confirm_host: Control = %ConfirmHost
 
-var _selected_id: StringName = &""
+const SettingsPopupScene := preload("res://scripts/ui/settings_popup.gd")
+const RecipeCardScene := preload("res://scenes/recipes/recipe_card.tscn")
+
+const BROWN := Color("#593326")
+const SECONDARY := Color("#8A5A45")
+const CORAL := Color("#E97076")
+const MINT := Color("#86C8AE")
+const LOCKED_GRAY := Color("#817671")
+
+var _list: HBoxContainer
+var _scroll: ScrollContainer
+var _details_panel: PanelContainer
+var _details_label: Label
+var _select_hint: Label
+var _coin_label: Label
+var _unlock_btn: Button
+var _craft_btn: Button
+var _empty_label: Label
+var _empty_actions: HBoxContainer
 var _confirm: ConfirmPopup
+var _settings: Control
+var _top_bar: TopResourceBar
+var _selected_id: StringName = &""
+var _rebuilding: bool = false
+var _signals_wired: bool = false
+var _cards_created: int = 0
+var _card_nodes: Dictionary = {} # recipe_id str -> card Control
 
 
 func _ready() -> void:
+	theme = ThemeFactory.build()
+	_build_shell()
+	_wire_game_signals()
+	call_deferred("_safe_rebuild")
+	if GameState.has_signal("save_loaded") and not GameState.save_loaded.is_connected(_safe_rebuild):
+		GameState.save_loaded.connect(_safe_rebuild)
+	AudioManager.play(AudioManager.Sfx.SHOP_OPENED)
+	call_deferred("_show_feature_tip")
+
+
+func _show_feature_tip() -> void:
+	FeatureTipPresenter.maybe_show(self, "recipes")
+
+
+func _build_shell() -> void:
+	while get_child_count() > 0:
+		var child := get_child(0)
+		remove_child(child)
+		child.free()
+
+	var bg := ColorRect.new()
+	bg.color = SugarStreetColors.WARM_CREAM
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg)
+
+	var safe := SafeAreaContainer.new()
+	safe.name = "SafeArea"
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe.set_min_margins(12, 10, 12, 8)
+	add_child(safe)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "PageRoot"
+	vbox.add_theme_constant_override("separation", 8)
+	safe.add_child(vbox)
+
+	_top_bar = TopResourceBar.new()
+	vbox.add_child(_top_bar)
+	_top_bar.menu_pressed.connect(func(): _settings.call("show_settings"))
+
+	# Top row: title · coins · back
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(top_row)
+
+	var title := Label.new()
+	title.text = "Recipe Book"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", BROWN)
+	top_row.add_child(title)
+
+	_coin_label = Label.new()
+	_coin_label.add_theme_font_size_override("font_size", 14)
+	_coin_label.add_theme_color_override("font_color", BROWN)
+	top_row.add_child(_coin_label)
+
+	var back_top := Button.new()
+	back_top.text = "Back"
+	back_top.custom_minimum_size = Vector2(72, 44)
+	ThemeFactory.apply_button_styles(back_top, ThemeFactory.secondary_button_styles())
+	back_top.pressed.connect(func(): SceneRouter.go_shop())
+	top_row.add_child(back_top)
+
+	_select_hint = Label.new()
+	_select_hint.text = "Select a recipe"
+	_select_hint.add_theme_font_size_override("font_size", 14)
+	_select_hint.add_theme_color_override("font_color", BROWN)
+	vbox.add_child(_select_hint)
+
+	# Horizontal recipe strip for portrait 405×720
+	_scroll = ScrollContainer.new()
+	_scroll.name = "RecipeScroll"
+	_scroll.custom_minimum_size = Vector2(0, 120)
+	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ScrollHelper.configure_horizontal(_scroll)
+	vbox.add_child(_scroll)
+
+	_list = HBoxContainer.new()
+	_list.name = "RecipeList"
+	_list.add_theme_constant_override("separation", 8)
+	_scroll.add_child(_list)
+
+	_empty_label = Label.new()
+	_empty_label.text = "No recipes could be loaded."
+	_empty_label.visible = false
+	_empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_empty_label.add_theme_color_override("font_color", SECONDARY)
+	vbox.add_child(_empty_label)
+
+	_empty_actions = HBoxContainer.new()
+	_empty_actions.visible = false
+	_empty_actions.add_theme_constant_override("separation", 8)
+	vbox.add_child(_empty_actions)
+	var retry := Button.new()
+	retry.text = "Retry Load"
+	retry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	retry.custom_minimum_size = Vector2(0, 44)
+	ThemeFactory.apply_button_styles(retry, ThemeFactory.primary_button_styles())
+	retry.pressed.connect(_safe_rebuild)
+	_empty_actions.add_child(retry)
+	var back_empty := Button.new()
+	back_empty.text = "Back"
+	back_empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	back_empty.custom_minimum_size = Vector2(0, 44)
+	ThemeFactory.apply_button_styles(back_empty, ThemeFactory.secondary_button_styles())
+	back_empty.pressed.connect(func(): SceneRouter.go_shop())
+	_empty_actions.add_child(back_empty)
+
+	# Details panel (fills remaining space above Unlock)
+	_details_panel = PanelContainer.new()
+	_details_panel.name = "DetailsPanel"
+	_details_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_details_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_details_panel.custom_minimum_size = Vector2(0, 160)
+	_details_panel.add_theme_stylebox_override("panel", ThemeFactory._card(SugarStreetColors.SOFT_IVORY, 14))
+	vbox.add_child(_details_panel)
+
+	var details_scroll := ScrollContainer.new()
+	details_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	details_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ScrollHelper.configure_vertical(details_scroll)
+	_details_panel.add_child(details_scroll)
+
+	_details_label = Label.new()
+	_details_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_details_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_details_label.add_theme_font_size_override("font_size", 13)
+	_details_label.add_theme_color_override("font_color", BROWN)
+	_details_label.text = "Choose a recipe card above to see details, requirements, and unlock options."
+	details_scroll.add_child(_details_label)
+
+	var action_row := HBoxContainer.new()
+	action_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(action_row)
+
+	_unlock_btn = Button.new()
+	_unlock_btn.text = "Unlock"
+	_unlock_btn.custom_minimum_size = Vector2(0, 48)
+	_unlock_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_unlock_btn.disabled = true
+	ThemeFactory.apply_button_styles(_unlock_btn, ThemeFactory.primary_button_styles())
+	_unlock_btn.pressed.connect(_on_unlock_pressed)
+	action_row.add_child(_unlock_btn)
+
+	_craft_btn = Button.new()
+	_craft_btn.text = "Craft"
+	_craft_btn.custom_minimum_size = Vector2(0, 48)
+	_craft_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_craft_btn.disabled = true
+	ThemeFactory.apply_button_styles(_craft_btn, ThemeFactory.soft_button_styles(), BROWN)
+	_craft_btn.pressed.connect(_on_craft_pressed)
+	action_row.add_child(_craft_btn)
+
+	var nav := BottomNavigation.new()
+	nav.selected_tab = BottomNavigation.TAB_RECIPES
+	vbox.add_child(nav)
+
 	_confirm = ConfirmPopup.new()
-	confirm_host.add_child(_confirm)
-	back_button.pressed.connect(func():
-		AudioManager.play_button()
-		SceneRouter.go_shop()
-	)
-	unlock_button.pressed.connect(_on_unlock_pressed)
-	GameState.state_changed.connect(refresh)
-	refresh()
+	add_child(_confirm)
+	_settings = SettingsPopupScene.new()
+	add_child(_settings)
 
 
-func refresh() -> void:
-	coins_label.text = "Coins: %s" % RewardCalculator.format_coins(GameState.data.coins)
-	for child in list.get_children():
-		child.queue_free()
-	for id in GameState.catalog.recipes.keys():
-		var recipe: RecipeData = GameState.catalog.recipes[id]
-		var btn := Button.new()
-		var unlocked := GameState.is_recipe_unlocked(recipe.recipe_id)
-		btn.text = "%s%s · %s" % [
-			recipe.display_name,
-			"" if unlocked else " (Locked)",
-			recipe.rarity_label(),
-		]
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.pressed.connect(_select.bind(recipe.recipe_id))
-		list.add_child(btn)
-	if _selected_id == &"" and not GameState.catalog.recipes.is_empty():
-		_select(StringName(str(GameState.catalog.recipes.keys()[0])))
-	elif _selected_id != &"":
-		_select(_selected_id)
-
-
-func _select(recipe_id: StringName) -> void:
-	_selected_id = recipe_id
-	var recipe := GameState.catalog.get_recipe(recipe_id)
-	if recipe == null:
+func _wire_game_signals() -> void:
+	if _signals_wired:
 		return
-	var unlocked := GameState.is_recipe_unlocked(recipe_id)
-	var req := "Player Lv.%d · %d stars · %s coins" % [
-		recipe.required_player_level,
-		recipe.required_stars,
+	_signals_wired = true
+	if not GameState.state_changed.is_connected(_safe_rebuild):
+		GameState.state_changed.connect(_safe_rebuild)
+	if not GameState.coins_changed.is_connected(_on_coins_changed):
+		GameState.coins_changed.connect(_on_coins_changed)
+	if not GameState.recipe_unlocked.is_connected(_on_recipe_unlocked):
+		GameState.recipe_unlocked.connect(_on_recipe_unlocked)
+	if not GameState.recipes.recipe_crafted.is_connected(_on_recipe_crafted):
+		GameState.recipes.recipe_crafted.connect(_on_recipe_crafted)
+	if not GameState.inventory.inventory_changed.is_connected(_on_inventory_changed):
+		GameState.inventory.inventory_changed.connect(_on_inventory_changed)
+
+
+func _on_coins_changed(_amount: int) -> void:
+	_refresh_coin_label()
+	_update_details()
+
+
+func _on_recipe_unlocked(_recipe_id: StringName) -> void:
+	_safe_rebuild()
+
+
+func _on_recipe_crafted(_recipe_id: String, _rewards: Dictionary) -> void:
+	_update_details()
+
+
+func _on_inventory_changed(_snapshot: Dictionary) -> void:
+	_update_details()
+
+
+func _safe_rebuild() -> void:
+	if not is_inside_tree():
+		return
+	if _list == null or not is_instance_valid(_list):
+		call_deferred("_safe_rebuild")
+		return
+	_rebuild()
+
+
+func _rebuild() -> void:
+	if _rebuilding or _list == null or not is_instance_valid(_list):
+		return
+	_rebuilding = true
+
+	while _list.get_child_count() > 0:
+		var child := _list.get_child(0)
+		_list.remove_child(child)
+		child.free()
+	_card_nodes.clear()
+
+	if GameState.catalog == null or GameState.catalog.recipes.is_empty():
+		GameState.catalog.build()
+
+	_refresh_coin_label()
+
+	if not ResourceLoader.exists("res://scenes/recipes/recipe_card.tscn"):
+		if OS.is_debug_build():
+			push_error("RecipeBook: invalid card scene path res://scenes/recipes/recipe_card.tscn")
+		_show_empty(true)
+		_rebuilding = false
+		return
+
+	var recipe_ids: Array[String] = GameState.recipes.all_recipe_ids() if GameState.recipes else []
+	var missing: Array = []
+	_cards_created = 0
+	for id_str in recipe_ids:
+		var id := StringName(id_str)
+		var recipe := GameState.catalog.get_recipe(id)
+		if recipe == null:
+			missing.append(str(id))
+			continue
+		var card := RecipeCardScene.instantiate()
+		if card == null:
+			if OS.is_debug_build():
+				push_error("RecipeBook: failed to instantiate recipe card")
+			continue
+		var unlocked := GameState.is_recipe_unlocked(recipe.recipe_id)
+		var is_sel := recipe.recipe_id == _selected_id
+		card.setup(recipe, unlocked, is_sel)
+		card.selected.connect(_on_card_selected)
+		_list.add_child(card)
+		_card_nodes[str(recipe.recipe_id)] = card
+		_cards_created += 1
+		if OS.is_debug_build():
+			print("RecipeBook: created card for %s" % str(recipe.recipe_id))
+
+	var empty := _cards_created == 0
+	_show_empty(empty)
+	_update_details()
+
+	if OS.is_debug_build():
+		print("RecipeBook: definitions=%d cards=%d selected=%s missing=%s parent=%s" % [
+			recipe_ids.size(), _cards_created, str(_selected_id), missing,
+			str(_list.get_path()) if is_inside_tree() else "RecipeList",
+		])
+		if empty:
+			push_warning("RecipeBook: no recipes could be loaded")
+
+	_rebuilding = false
+
+
+func _show_empty(empty: bool) -> void:
+	_empty_label.visible = empty
+	_empty_actions.visible = empty
+	_scroll.visible = not empty
+	_details_panel.visible = not empty
+	_unlock_btn.visible = not empty
+	_craft_btn.visible = not empty
+	_select_hint.visible = not empty
+
+
+func _refresh_coin_label() -> void:
+	if _coin_label:
+		_coin_label.text = "%s coins" % RewardCalculator.format_coins(GameState.data.coins)
+
+
+func _on_card_selected(recipe_id: StringName) -> void:
+	_selected_id = recipe_id
+	for key in _card_nodes.keys():
+		var card = _card_nodes[key]
+		if is_instance_valid(card) and card.has_method("set_selected"):
+			card.set_selected(StringName(key) == recipe_id)
+	if OS.is_debug_build():
+		print("RecipeBook: selected recipe ID=%s" % str(recipe_id))
+	_update_details()
+
+
+func _update_details() -> void:
+	_refresh_coin_label()
+	if _selected_id == &"":
+		_select_hint.text = "Select a recipe"
+		_details_label.text = "Choose a recipe card above to see details, requirements, and unlock options."
+		_details_label.add_theme_color_override("font_color", BROWN)
+		_unlock_btn.text = "Unlock"
+		_unlock_btn.disabled = true
+		_craft_btn.text = "Craft"
+		_craft_btn.disabled = true
+		return
+
+	var recipe := GameState.catalog.get_recipe(_selected_id)
+	if recipe == null:
+		_details_label.text = "Recipe data missing."
+		_unlock_btn.disabled = true
+		_craft_btn.disabled = true
+		return
+
+	var unlocked := GameState.is_recipe_unlocked(recipe.recipe_id)
+	_select_hint.text = recipe.display_name
+	_select_hint.add_theme_color_override("font_color", BROWN)
+
+	var lines: PackedStringArray = []
+	lines.append(recipe.display_name)
+	lines.append("%s · %s" % [recipe.category_label(), recipe.rarity_label()])
+	lines.append("")
+	lines.append(recipe.description)
+	lines.append("")
+	lines.append("Status: %s" % ("Unlocked" if unlocked else "Locked"))
+	lines.append("Requires player level %d (you: %d)" % [recipe.required_player_level, GameState.data.player_level])
+	lines.append("Requires %d stars (you: %d)" % [recipe.required_stars, GameState.data.stars])
+	lines.append("Unlock cost: %s coins (you: %s)" % [
 		RewardCalculator.format_coins(recipe.unlock_coin_cost),
-	]
-	var ings := ""
-	for k in recipe.ingredient_requirements.keys():
-		ings += "\n• %s x%d" % [str(k).replace("_", " ").capitalize(), int(recipe.ingredient_requirements[k])]
-	detail_label.text = "%s\n%s\nCategory: %s\nRarity: %s\nBase value: %s\n\n%s\n\nRequirements:\n%s\n\nIngredients:%s" % [
-		recipe.display_name,
-		"UNLOCKED" if unlocked else "LOCKED",
-		recipe.category_label(),
-		recipe.rarity_label(),
-		RewardCalculator.format_coins(recipe.base_selling_value),
-		recipe.description,
-		req,
-		ings if ings != "" else "\n• None listed",
-	]
+		RewardCalculator.format_coins(GameState.data.coins),
+	])
+	if not recipe.ingredient_requirements.is_empty():
+		var parts: PackedStringArray = []
+		for iid in recipe.ingredient_requirements.keys():
+			parts.append("%s×%s" % [str(recipe.ingredient_requirements[iid]), str(iid)])
+		lines.append("Ingredients: %s" % ", ".join(parts))
+
+	var def := GameState.recipes.get_definition(str(_selected_id))
+	if def and unlocked:
+		lines.append("")
+		lines.append("Craft cost: %s" % _format_costs(def.craft_ingredient_costs))
+		lines.append("Craft reward: %s coins · %d XP · %d rep" % [
+			RewardCalculator.format_coins(def.craft_coin_reward), def.craft_xp_reward, def.craft_reputation_reward,
+		])
+		var crafted := GameState.crafted_recipe_count(recipe.recipe_id)
+		if crafted > 0:
+			lines.append("Crafted so far: %d" % crafted)
+	_details_label.text = "\n".join(lines)
+	_details_label.add_theme_color_override("font_color", BROWN)
+
 	if unlocked:
-		unlock_button.disabled = true
-		unlock_button.text = "Unlocked"
-		feedback_label.text = "This recipe is already in your book."
+		_unlock_btn.text = "Unlocked"
+		_unlock_btn.disabled = true
+		var craft_check := GameState.can_craft_recipe(recipe.recipe_id)
+		_craft_btn.text = "Craft"
+		_craft_btn.disabled = not craft_check.get("ok", false)
 	else:
-		var check := GameState.can_unlock_recipe(recipe_id)
-		unlock_button.disabled = not check.get("ok", false)
-		unlock_button.text = "Unlock for %s" % RewardCalculator.format_coins(recipe.unlock_coin_cost)
-		feedback_label.text = str(check.get("reason", ""))
+		var check := GameState.can_unlock_recipe(recipe.recipe_id)
+		_unlock_btn.text = "Unlock for %s" % RewardCalculator.format_coins(recipe.unlock_coin_cost)
+		_unlock_btn.disabled = not check.get("ok", false)
+		_craft_btn.text = "Craft"
+		_craft_btn.disabled = true
+
+
+func _format_costs(costs: Dictionary) -> String:
+	var parts: PackedStringArray = []
+	for iid in costs.keys():
+		parts.append("%s×%s" % [str(costs[iid]), str(iid)])
+	return ", ".join(parts) if not parts.is_empty() else "Free"
 
 
 func _on_unlock_pressed() -> void:
@@ -96,18 +417,36 @@ func _on_unlock_pressed() -> void:
 	)
 	if _confirm.confirmed.is_connected(_do_unlock):
 		_confirm.confirmed.disconnect(_do_unlock)
-	_confirm.confirmed.connect(_do_unlock, CONNECT_ONE_SHOT)
+	_confirm.confirmed.connect(_do_unlock.bind(_selected_id), CONNECT_ONE_SHOT)
 
 
-func _do_unlock() -> void:
-	var result := GameState.unlock_recipe(_selected_id)
+func _do_unlock(recipe_id: StringName = &"") -> void:
+	if recipe_id == &"":
+		return
+	var result := GameState.unlock_recipe(recipe_id)
 	if result.get("ok", false):
 		AudioManager.play(AudioManager.Sfx.RECIPE_UNLOCKED)
-		feedback_label.text = "Recipe unlocked!"
-		# Simple unlock pulse.
-		var tween := create_tween()
-		tween.tween_property(detail_label, "modulate", Color(1.2, 1.1, 0.8), 0.12)
-		tween.tween_property(detail_label, "modulate", Color.WHITE, 0.2)
+		_selected_id = recipe_id
+		_safe_rebuild()
 	else:
-		feedback_label.text = str(result.get("reason", "Could not unlock."))
-	refresh()
+		_details_label.text = str(result.get("reason", "Could not unlock."))
+		_details_label.add_theme_color_override("font_color", CORAL)
+
+
+func _on_craft_pressed() -> void:
+	if _selected_id == &"":
+		return
+	var result := GameState.craft_recipe(_selected_id)
+	if result.get("ok", false):
+		AudioManager.play(AudioManager.Sfx.RECIPE_UNLOCKED)
+		var rewards: Dictionary = result.get("rewards", {})
+		_details_label.text = "Crafted! +%s coins · +%d XP · +%d rep." % [
+			RewardCalculator.format_coins(int(rewards.get("coins", 0))),
+			int(rewards.get("experience", 0)),
+			int(rewards.get("reputation", 0)),
+		]
+		_details_label.add_theme_color_override("font_color", MINT)
+		_update_details()
+	else:
+		_details_label.text = str(result.get("reason", "Could not craft."))
+		_details_label.add_theme_color_override("font_color", CORAL)

@@ -76,6 +76,24 @@ static func bonus_ingredient_chance(catalog: ContentCatalog, data: SaveData) -> 
 	return {"chance": clampf(total, 0.0, 0.95), "contributors": contributors}
 
 
+static func bonus_star_chance(catalog: ContentCatalog, data: SaveData) -> Dictionary:
+	## Chance is absolute (0..1) that a completed order grants +1 bonus star.
+	var total := 0.0
+	var contributors: Array = []
+	for entry in active_workers(catalog, data):
+		var worker: WorkerData = entry["worker"]
+		var level: int = entry["level"]
+		var chance := 0.0
+		if worker.primary_bonus_type == &"bonus_star_chance":
+			chance += worker.primary_bonus_base + worker.primary_bonus_per_level * float(level)
+		if worker.secondary_bonus_type == &"bonus_star_chance":
+			chance += worker.secondary_bonus_per_level * float(level)
+		if chance > 0.0:
+			total += chance
+			contributors.append({"name": worker.display_name, "chance": chance})
+	return {"chance": clampf(total, 0.0, 0.5), "contributors": contributors}
+
+
 static func _sum_bonus(catalog: ContentCatalog, data: SaveData, bonus_type: StringName) -> Dictionary:
 	var total := 0.0
 	var contributors: Array = []
@@ -101,4 +119,5 @@ static func summarize_active_bonuses(catalog: ContentCatalog, data: SaveData) ->
 		"all_order_rewards": all_order_rewards_bonus_percent(catalog, data),
 		"passive_income": passive_income_bonus_percent(catalog, data),
 		"bonus_ingredients": bonus_ingredient_chance(catalog, data),
+		"bonus_star_chance": bonus_star_chance(catalog, data),
 	}

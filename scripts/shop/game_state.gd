@@ -23,39 +23,131 @@ signal level_up(new_level: int, coin_reward: int)
 signal notifications_changed
 signal save_loaded
 signal save_completed
+signal decoration_purchased(decoration_id: StringName)
+signal decoration_placed(slot_id: StringName, decoration_id: StringName)
+signal decoration_removed(slot_id: StringName, decoration_id: StringName)
+signal shop_level_upgraded(new_level: int)
+signal appeal_changed(appeal: int, tier: String)
+signal inventory_changed(ingredients: Dictionary)
 
 ## True in editor / debug builds only. Production exports hide debug panels.
-const DEBUG_TOOLS_ENABLED := true
+## Routed through BuildConfig so release-safety gating lives in one place.
+var DEBUG_TOOLS_ENABLED: bool:
+	get: return BuildConfig.developer_menu_enabled()
+## Placeholder energy counter shown in the top bar (no full energy system yet).
+const ENERGY_PLACEHOLDER := 5
 
 var catalog := ContentCatalog.new()
+var decor_catalog := DecorationCatalog.new()
+## Convenience accessor for the seeded typed-Resource definitions.
+var definitions: DefinitionDatabase:
+	get: return catalog.definitions
 var data: SaveData
+
+# Data-driven managers (signals + validation; no visual-scene dependencies).
+var economy := EconomyManager.new()
+var inventory := InventoryManager.new()
+var recipes := RecipeManager.new()
+var upgrades := UpgradeManager.new()
+var progression := ProgressionManager.new()
+var orders := OrderManager.new()
+var workers := WorkerService.new()
 var pending_level_ups: Array[Dictionary] = []
 var last_completion_rewards: Dictionary = {}
 var last_offline_payload: Dictionary = {}
 var current_session_result: Dictionary = {}
+## Set whenever the most recent load recovered from a corrupt/unreadable save
+## ("recovered_from_backup" / "reset_to_defaults"), or "" when the load was
+## clean. UI reads this once via consume_save_recovery_note() to show a
+## "Continue error state" notice instead of silently swapping save data.
+var pending_save_recovery_note: String = ""
 var _busy: bool = false
+var _purchase_lock: bool = false
 var _rng := RandomNumberGenerator.new()
+var _previous_appeal_tier: String = "Plain"
 
 
 func _ready() -> void:
 	_rng.randomize()
 	catalog.build()
+	decor_catalog.build()
 	if SaveManager.has_save():
 		data = SaveManager.load_game()
+		pending_save_recovery_note = SaveManager.last_recovery_note
 	else:
 		data = SaveData.create_default()
 	_post_load_setup()
 	_apply_audio_settings()
 	save_loaded.emit()
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	emit_signal("state_changed")
 
 
 func _post_load_setup() -> void:
 	data.apply_worker_defaults()
+	_setup_managers()
 	WorkerManager.repair_assignments(catalog, data)
+	var decor_logs := DecorationManager.repair(decor_catalog, data)
+	if OS.is_debug_build() and not decor_logs.is_empty():
+		for msg in decor_logs:
+			print("DecorationManager repair: ", msg)
+	_previous_appeal_tier = str(data.shop_appeal_tier)
+	_ensure_ingredients()
 	_ensure_order_board()
 	# Passive/offline systems remain in code for migration but are not exposed this phase.
 	OfflineEarningsCalculator.mark_session_active(data)
+
+
+func _setup_managers() -> void:
+	economy.setup(data)
+	inventory.setup(definitions, data)
+	recipes.setup(definitions, data, inventory, economy)
+	upgrades.setup(definitions, data, economy)
+	progression.setup(data, economy)
+	orders.setup(definitions, data, catalog)
+	workers.setup(definitions, data, catalog)
+	recipes.ensure_default_unlocks()
+	_wire_manager_signals()
+
+
+func _wire_manager_signals() -> void:
+	## Bridge manager signals into the legacy GameState signals the existing UI
+	## already listens to, so no UI rewiring is required for basic reactivity.
+	if not inventory.inventory_changed.is_connected(_on_inventory_manager_changed):
+		inventory.inventory_changed.connect(_on_inventory_manager_changed)
+	if not economy.coins_changed.is_connected(_on_economy_coins_changed):
+		economy.coins_changed.connect(_on_economy_coins_changed)
+	if not recipes.recipe_unlocked.is_connected(_on_recipe_manager_unlocked):
+		recipes.recipe_unlocked.connect(_on_recipe_manager_unlocked)
+	if not upgrades.upgrade_purchased.is_connected(_on_upgrade_manager_purchased):
+		upgrades.upgrade_purchased.connect(_on_upgrade_manager_purchased)
+	if not order_status_changed.is_connected(_on_order_state_touched):
+		order_status_changed.connect(_on_order_state_touched)
+	if not order_updated.is_connected(_on_order_state_touched):
+		order_updated.connect(_on_order_state_touched)
+
+
+func _on_inventory_manager_changed(ingredients_snapshot: Dictionary) -> void:
+	inventory_changed.emit(ingredients_snapshot)
+
+
+func _on_economy_coins_changed(amount: int) -> void:
+	coins_changed.emit(amount)
+
+
+func _on_recipe_manager_unlocked(recipe_id: String) -> void:
+	recipe_unlocked.emit(StringName(recipe_id))
+
+
+func _on_upgrade_manager_purchased(upgrade_id: String, new_level: int) -> void:
+	var def := definitions.get_upgrade(upgrade_id) if definitions else null
+	if def and def.linked_equipment_id != "":
+		equipment_upgraded.emit(StringName(def.linked_equipment_id), new_level)
+	state_changed.emit()
+
+
+func _on_order_state_touched(_a = null, _b = null) -> void:
+	orders.notify_changed()
 
 
 func has_save() -> bool:
@@ -63,10 +155,18 @@ func has_save() -> bool:
 
 
 func has_valid_save() -> bool:
-	if not SaveManager.has_save():
+	## Continue stays disabled when only a corrupt primary exists with no backup.
+	if not SaveManager.has_valid_save_file():
 		return false
 	var loaded := SaveManager.load_game()
 	return loaded != null and loaded.player_level >= 1
+
+
+func consume_save_recovery_note() -> String:
+	## Read-once accessor for the title screen's "Continue error state" notice.
+	var note := pending_save_recovery_note
+	pending_save_recovery_note = ""
+	return note
 
 
 func new_game() -> void:
@@ -80,19 +180,26 @@ func new_game() -> void:
 	_apply_audio_settings()
 	save_now()
 	save_loaded.emit()
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	state_changed.emit()
 
 
 func continue_game() -> void:
 	data = SaveManager.load_game()
+	pending_save_recovery_note = SaveManager.last_recovery_note
 	_post_load_setup()
 	_apply_audio_settings()
 	save_loaded.emit()
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	state_changed.emit()
 
 
 func save_now() -> void:
 	OfflineEarningsCalculator.mark_session_active(data)
+	data.app_version = BuildConfig.APP_VERSION
+	var router := get_node_or_null("/root/SceneRouter")
+	if router:
+		data.current_screen = str(router.current_path)
 	SaveManager.save_game(data)
 	save_completed.emit()
 
@@ -145,12 +252,71 @@ func is_recipe_unlocked(recipe_id: StringName) -> bool:
 	return bool(data.unlocked_recipes.get(str(recipe_id), false))
 
 
+func _upgrade_id_for_equipment(equipment_id: StringName) -> String:
+	## Equipment ids and upgrade ids match 1:1 except the checkout counter,
+	## which is exposed to players as the "Cash Register" upgrade.
+	var key := str(equipment_id)
+	return "cash_register" if key == "checkout" else key
+
+
 func get_equipment_level(equipment_id: StringName) -> int:
+	if upgrades:
+		return upgrades.get_level(_upgrade_id_for_equipment(equipment_id))
 	return int(data.equipment_levels.get(str(equipment_id), 1))
 
 
 func get_ingredient_amount(ingredient_id: StringName) -> int:
-	return int(data.ingredients.get(str(ingredient_id), 0))
+	if inventory and data:
+		return inventory.get_amount(str(ingredient_id))
+	if data == null:
+		return 0
+	_ensure_ingredients()
+	var key := str(ingredient_id)
+	var amount := 0
+	if data.ingredients.has(key):
+		amount = int(data.ingredients[key])
+	elif data.ingredients.has(ingredient_id):
+		amount = int(data.ingredients[ingredient_id])
+	return maxi(0, amount)
+
+
+func get_energy_display() -> int:
+	if data == null:
+		return ENERGY_PLACEHOLDER
+	return maxi(0, int(data.settings.get("energy_placeholder", ENERGY_PLACEHOLDER)))
+
+
+func get_total_ingredient_units() -> int:
+	if inventory:
+		return inventory.total_units()
+	_ensure_ingredients()
+	var total := 0
+	for key in data.ingredients.keys():
+		total += maxi(0, int(data.ingredients[key]))
+	return total
+
+
+func reset_inventory_to_starter() -> void:
+	## Development helper — restores the New Game pantry.
+	if inventory:
+		inventory.reset_to_starter()
+	else:
+		data.ingredients = SaveData.starter_ingredients()
+		inventory_changed.emit(data.ingredients.duplicate(true))
+	save_now()
+	state_changed.emit()
+
+
+func _ensure_ingredients() -> void:
+	if data == null:
+		return
+	if inventory:
+		inventory.ensure_defaults()
+		return
+	if data.ingredients == null or typeof(data.ingredients) != TYPE_DICTIONARY:
+		data.ingredients = SaveData.starter_ingredients()
+		return
+	data.ingredients = SaveData.ensure_ingredient_keys(data.ingredients)
 
 
 func get_order_status(order_id: String) -> int:
@@ -224,6 +390,11 @@ func can_unlock_recipe(recipe_id: StringName) -> Dictionary:
 
 
 func can_upgrade_equipment(equipment_id: StringName) -> Dictionary:
+	if upgrades:
+		var result := upgrades.can_purchase(_upgrade_id_for_equipment(equipment_id))
+		if not result.has("reason"):
+			result["reason"] = ""
+		return result
 	var eq := catalog.get_equipment(equipment_id)
 	if eq == null:
 		return {"ok": false, "reason": "Unknown equipment."}
@@ -246,8 +417,25 @@ func recipe_unlock_available_count() -> int:
 
 func affordable_upgrade_count() -> int:
 	var count := 0
+	if upgrades:
+		for id in upgrades.all_upgrade_ids():
+			if upgrades.can_purchase(id).get("ok", false):
+				count += 1
+		return count
 	for id in catalog.equipment.keys():
 		if can_upgrade_equipment(StringName(id)).get("ok", false):
+			count += 1
+	return count
+
+
+func affordable_worker_action_count() -> int:
+	## Convenience badge helper: hireable OR upgradeable workers.
+	var count := 0
+	for id in workers.all_worker_ids():
+		if can_hire_worker(StringName(id)).get("ok", false):
+			count += 1
+			continue
+		if is_worker_hired(StringName(id)) and can_upgrade_worker(StringName(id)).get("ok", false):
 			count += 1
 	return count
 
@@ -300,6 +488,13 @@ func begin_order_level(order_id: String) -> LevelConfig:
 	var status := get_order_status(order_id)
 	if status == SaveData.OrderStatus.COMPLETED or status == SaveData.OrderStatus.LOCKED:
 		return null
+	# An order cannot be started while a DIFFERENT order is already in
+	# progress (resuming the same order is fine — that's how "Continue" works).
+	if data.active_order_id != "" and data.active_order_id != order_id:
+		var active_status := get_order_status(data.active_order_id)
+		if active_status == SaveData.OrderStatus.LEVEL_IN_PROGRESS:
+			push_warning("GameState: cannot start '%s' — '%s' is already in progress." % [order_id, data.active_order_id])
+			return null
 	# READY_TO_COMPLETE allowed for practice replay without clearing the win.
 	var level := _build_level_for_order(order)
 	if level == null or not level.validate():
@@ -417,7 +612,7 @@ func complete_order(order_id: String) -> Dictionary:
 		return {}
 
 	_busy = true
-	var rewards := RewardCalculator.compute_order_rewards(order, data, catalog)
+	var rewards := RewardCalculator.compute_order_rewards(order, data, catalog, decor_catalog)
 	var result: Dictionary = data.order_level_results.get(order_id, {})
 	var stars_earned := int(result.get("stars", 1))
 	var level_id := order.level_id
@@ -431,10 +626,26 @@ func complete_order(order_id: String) -> Dictionary:
 	for k in bonus_ings.keys():
 		rewards["ingredients"][k] = int(rewards["ingredients"].get(k, 0)) + int(bonus_ings[k])
 
+	# Décor upgrade: extra "tip" bonus applied to the final coin reward.
+	var tip_bonus := upgrades.effect_value("decor") if upgrades else 0.0
+	if tip_bonus > 0.0:
+		rewards["coins"] = maxi(0, int(round(float(rewards["coins"]) * (1.0 + tip_bonus))))
+
+	# Lighting upgrade + Noah's bonus-star-chance perk: small odds of +1 star.
+	var star_chance := 0.0
+	if upgrades:
+		star_chance += upgrades.effect_value("lighting")
+	if workers:
+		star_chance += float(WorkerBonusCalculator.bonus_star_chance(catalog, data).get("chance", 0.0))
+	var bonus_star_awarded := star_chance > 0.0 and _rng.randf() < clampf(star_chance, 0.0, 0.9)
+	if bonus_star_awarded:
+		permanent_stars += 1
+
 	data.coins += int(rewards["coins"])
 	data.reputation += int(rewards["reputation"])
 	data.stars += permanent_stars
 	data.granted_level_stars[level_id] = already_granted + permanent_stars
+	_ensure_ingredients()
 	for ing_id in rewards["ingredients"].keys():
 		var add_amt := int(rewards["ingredients"][ing_id])
 		var key := str(ing_id)
@@ -467,6 +678,7 @@ func complete_order(order_id: String) -> Dictionary:
 		"stars_earned_run": stars_earned,
 		"ingredients": rewards["ingredients"],
 		"bonus_ingredients": bonus_ings,
+		"bonus_star_awarded": bonus_star_awarded,
 		"breakdown": breakdown,
 		"level_ups": pending_level_ups.duplicate(true),
 	}
@@ -476,6 +688,7 @@ func complete_order(order_id: String) -> Dictionary:
 	stars_changed.emit(data.stars)
 	reputation_changed.emit(data.reputation)
 	experience_changed.emit(data.experience, PlayerProgression.xp_required_for_next_level(data.player_level), data.player_level)
+	inventory_changed.emit(data.ingredients.duplicate(true))
 	order_status_changed.emit(order_id, SaveData.OrderStatus.COMPLETED)
 	order_updated.emit(order_id)
 	notifications_changed.emit()
@@ -518,26 +731,209 @@ func unlock_recipe(recipe_id: StringName) -> Dictionary:
 	return {"ok": true, "reason": ""}
 
 
+func can_craft_recipe(recipe_id: StringName) -> Dictionary:
+	return recipes.can_craft(str(recipe_id))
+
+
+func craft_recipe(recipe_id: StringName) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var result := recipes.craft(str(recipe_id))
+	if not result.get("ok", false):
+		return result
+	save_now()
+	coins_changed.emit(data.coins)
+	inventory_changed.emit(data.ingredients.duplicate(true))
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func crafted_recipe_count(recipe_id: StringName) -> int:
+	return recipes.crafted_count(str(recipe_id))
+
+
 func upgrade_equipment(equipment_id: StringName) -> Dictionary:
+	if upgrades:
+		var result := upgrades.purchase(_upgrade_id_for_equipment(equipment_id))
+		if not result.get("ok", false):
+			if not result.has("reason"):
+				result["reason"] = "Could not upgrade."
+			return result
+		save_now()
+		notifications_changed.emit()
+		state_changed.emit()
+		return {"ok": true, "reason": "", "new_level": int(result.get("new_level", 1))}
 	var check := can_upgrade_equipment(equipment_id)
 	if not check.get("ok", false):
 		return check
-	var eq := catalog.get_equipment(equipment_id)
 	var next_level: int = int(check["next_level"])
 	var cost: int = int(check["cost"])
 	data.coins = maxi(0, data.coins - cost)
 	data.equipment_levels[str(equipment_id)] = next_level
-	# Shop level = average equipment tier (simple progression signal).
-	var total := 0
-	for id in data.equipment_levels.keys():
-		total += int(data.equipment_levels[id])
-	data.shop_level = maxi(1, int(round(float(total) / float(maxi(data.equipment_levels.size(), 1)))))
+	# Shop level is an independent progression track (decoration system).
 	save_now()
 	coins_changed.emit(data.coins)
 	equipment_upgraded.emit(equipment_id, next_level)
 	notifications_changed.emit()
 	state_changed.emit()
 	return {"ok": true, "reason": "", "new_level": next_level}
+
+
+# ---------------------------------------------------------------------------
+# Decorations / Shop Appeal / Shop Level
+# ---------------------------------------------------------------------------
+
+func get_decoration(decoration_id: StringName) -> DecorationData:
+	return decor_catalog.get_decoration(decoration_id)
+
+
+func get_decoration_slot(slot_id: StringName) -> DecorationSlotDef:
+	return decor_catalog.get_slot(slot_id)
+
+
+func is_decoration_owned(decoration_id: StringName) -> bool:
+	return DecorationManager.is_owned(data, str(decoration_id))
+
+
+func get_shop_appeal() -> int:
+	return ShopAppealCalculator.calculate_appeal(decor_catalog, data.placed_decorations)
+
+
+func get_appeal_summary() -> Dictionary:
+	return ShopAppealCalculator.summarize(decor_catalog, data)
+
+
+func can_purchase_decoration(decoration_id: StringName) -> Dictionary:
+	return DecorationManager.can_purchase(decor_catalog.get_decoration(decoration_id), data)
+
+
+func purchase_decoration(decoration_id: StringName) -> Dictionary:
+	if _busy or _purchase_lock:
+		return {"ok": false, "reason": "Busy."}
+	_purchase_lock = true
+	var result := DecorationManager.purchase(decor_catalog.get_decoration(decoration_id), data)
+	_purchase_lock = false
+	if not result.get("ok", false):
+		return result
+	_sync_appeal(false)
+	save_now()
+	coins_changed.emit(data.coins)
+	decoration_purchased.emit(decoration_id)
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func can_place_decoration(decoration_id: StringName, slot_id: StringName) -> Dictionary:
+	return DecorationManager.can_place(
+		decor_catalog.get_decoration(decoration_id),
+		decor_catalog.get_slot(slot_id),
+		data
+	)
+
+
+func place_decoration(decoration_id: StringName, slot_id: StringName, replace_existing: bool = false) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var result := DecorationManager.place(
+		decor_catalog.get_decoration(decoration_id),
+		decor_catalog.get_slot(slot_id),
+		data,
+		replace_existing
+	)
+	if not result.get("ok", false):
+		return result
+	var prev_tier := _previous_appeal_tier
+	_sync_appeal(true)
+	save_now()
+	decoration_placed.emit(slot_id, decoration_id)
+	if _previous_appeal_tier != prev_tier:
+		AudioManager.play(AudioManager.Sfx.APPEAL_TIER_UP)
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func remove_decoration_from_slot(slot_id: StringName) -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var result := DecorationManager.remove_from_slot(str(slot_id), data)
+	if not result.get("ok", false):
+		return result
+	_sync_appeal(true)
+	save_now()
+	decoration_removed.emit(slot_id, StringName(str(result.get("decoration_id", ""))))
+	notifications_changed.emit()
+	state_changed.emit()
+	return result
+
+
+func can_upgrade_shop_level() -> Dictionary:
+	return ShopLevelRules.can_upgrade(data, get_shop_appeal())
+
+
+func upgrade_shop_level() -> Dictionary:
+	if _busy:
+		return {"ok": false, "reason": "Busy."}
+	var check := can_upgrade_shop_level()
+	if not check.get("ok", false):
+		return check
+	var cost: int = int(check.get("cost", 0))
+	var next_level: int = int(check.get("next_level", data.shop_level + 1))
+	data.coins = maxi(0, data.coins - cost)
+	data.shop_level = next_level
+	var newly := DecorationManager.refresh_unlocks(decor_catalog, data)
+	_sync_appeal(false)
+	save_now()
+	coins_changed.emit(data.coins)
+	shop_level_upgraded.emit(next_level)
+	notifications_changed.emit()
+	state_changed.emit()
+	return {
+		"ok": true,
+		"reason": "",
+		"new_level": next_level,
+		"new_unlocks": newly,
+		"new_slots": check.get("requirements", {}).get("slots", []),
+	}
+
+
+func decoration_notification_priority() -> Dictionary:
+	## Highest-priority badge for Decor button.
+	if can_upgrade_shop_level().get("ok", false):
+		return {"count": 1, "kind": "shop_upgrade"}
+	var empty_slots := DecorationManager.empty_unlocked_slot_count(decor_catalog, data)
+	if empty_slots > 0:
+		return {"count": empty_slots, "kind": "empty_slot"}
+	var affordable := DecorationManager.affordable_count(decor_catalog, data)
+	if affordable > 0:
+		return {"count": affordable, "kind": "affordable"}
+	var newly := DecorationManager.newly_unlocked_count(decor_catalog, data)
+	if newly > 0:
+		return {"count": newly, "kind": "unlocked"}
+	return {"count": 0, "kind": ""}
+
+
+func mark_decoration_unlocks_seen() -> void:
+	if typeof(data.settings.get("decor_seen_unlocks", null)) != TYPE_DICTIONARY:
+		data.settings["decor_seen_unlocks"] = {}
+	var seen: Dictionary = data.settings["decor_seen_unlocks"]
+	for decor in decor_catalog.all_decorations():
+		var id := str(decor.decoration_id)
+		if bool(data.unlocked_decorations.get(id, false)):
+			seen[id] = true
+	data.settings["decor_seen_unlocks"] = seen
+	notifications_changed.emit()
+
+
+func _sync_appeal(emit_signal_if_changed: bool = true) -> void:
+	var prev := int(data.shop_appeal)
+	var prev_tier := str(data.shop_appeal_tier)
+	var appeal := DecorationManager.recalculate_appeal(decor_catalog, data)
+	_previous_appeal_tier = str(data.shop_appeal_tier)
+	if emit_signal_if_changed and (appeal != prev or data.shop_appeal_tier != prev_tier):
+		appeal_changed.emit(appeal, data.shop_appeal_tier)
 
 
 # ---------------------------------------------------------------------------
@@ -549,22 +945,27 @@ func get_worker(worker_id: StringName) -> WorkerData:
 
 
 func is_worker_hired(worker_id: StringName) -> bool:
+	if workers:
+		return workers.is_hired(str(worker_id))
 	return WorkerManager.is_hired(data, str(worker_id))
 
 
 func get_worker_level(worker_id: StringName) -> int:
+	if workers:
+		return workers.get_level(str(worker_id))
 	return WorkerManager.get_level(data, str(worker_id))
 
 
 func can_hire_worker(worker_id: StringName) -> Dictionary:
+	if workers:
+		return workers.can_hire(str(worker_id))
 	return WorkerManager.can_hire(catalog.get_worker(worker_id), data)
 
 
 func hire_worker(worker_id: StringName) -> Dictionary:
 	if _busy:
 		return {"ok": false, "reason": "Busy."}
-	var worker := catalog.get_worker(worker_id)
-	var result := WorkerManager.hire(worker, data)
+	var result: Dictionary = workers.hire(str(worker_id)) if workers else WorkerManager.hire(catalog.get_worker(worker_id), data)
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -576,14 +977,15 @@ func hire_worker(worker_id: StringName) -> Dictionary:
 
 
 func can_upgrade_worker(worker_id: StringName) -> Dictionary:
+	if workers:
+		return workers.can_upgrade(str(worker_id))
 	return WorkerManager.can_upgrade(catalog.get_worker(worker_id), data)
 
 
 func upgrade_worker(worker_id: StringName) -> Dictionary:
 	if _busy:
 		return {"ok": false, "reason": "Busy."}
-	var worker := catalog.get_worker(worker_id)
-	var result := WorkerManager.upgrade(worker, data)
+	var result: Dictionary = workers.upgrade(str(worker_id)) if workers else WorkerManager.upgrade(catalog.get_worker(worker_id), data)
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -595,8 +997,7 @@ func upgrade_worker(worker_id: StringName) -> Dictionary:
 
 
 func assign_worker(worker_id: StringName, station: WorkerData.Station) -> Dictionary:
-	var worker := catalog.get_worker(worker_id)
-	var result := WorkerManager.assign(worker, data, station)
+	var result: Dictionary = workers.assign(str(worker_id), station) if workers else WorkerManager.assign(catalog.get_worker(worker_id), data, station)
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -607,7 +1008,7 @@ func assign_worker(worker_id: StringName, station: WorkerData.Station) -> Dictio
 
 
 func unassign_worker(worker_id: StringName) -> Dictionary:
-	var result := WorkerManager.unassign(data, str(worker_id))
+	var result: Dictionary = workers.unassign(str(worker_id)) if workers else WorkerManager.unassign(data, str(worker_id))
 	if not result.get("ok", false):
 		return result
 	save_now()
@@ -622,7 +1023,7 @@ func get_assigned_worker_count() -> int:
 
 
 func preview_order_rewards(order: OrderTemplate) -> Dictionary:
-	return RewardCalculator.compute_order_rewards(order, data, catalog)
+	return RewardCalculator.compute_order_rewards(order, data, catalog, decor_catalog)
 
 
 func worker_hire_available_count() -> int:
@@ -765,9 +1166,12 @@ func debug_reset_orders() -> void:
 
 
 func debug_max_equipment() -> void:
-	for id in catalog.equipment.keys():
-		data.equipment_levels[str(id)] = 3
-	data.shop_level = 3
+	if upgrades:
+		for id in ["oven", "mixer", "display_case", "cash_register"]:
+			upgrades.force_max(id)
+	else:
+		for id in catalog.equipment.keys():
+			data.equipment_levels[str(id)] = 3
 	save_now()
 	state_changed.emit()
 
@@ -779,6 +1183,11 @@ func debug_print_gamestate() -> void:
 		"coins": data.coins,
 		"stars": data.stars,
 		"reputation": data.reputation,
+		"shop_level": data.shop_level,
+		"shop_appeal": data.shop_appeal,
+		"shop_appeal_tier": data.shop_appeal_tier,
+		"owned_decorations": data.owned_decorations,
+		"placed_decorations": data.placed_decorations,
 		"active_order_id": data.active_order_id,
 		"visible_order_ids": data.visible_order_ids,
 		"order_statuses": data.order_statuses,
@@ -912,9 +1321,109 @@ func debug_reset_workers_only() -> void:
 	data.hired_workers.clear()
 	data.worker_levels.clear()
 	data.worker_assignments.clear()
-	data.worker_unlock_flags = {"ava": true}
+	data.worker_unlock_flags = {"lily": true}
 	data.stored_passive_coins = 0.0
 	save_now()
+	state_changed.emit()
+
+
+func resync_appeal() -> void:
+	_sync_appeal(true)
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_set_player_level(level: int) -> void:
+	data.player_level = clampi(level, 1, 99)
+	save_now()
+	player_level_changed.emit(data.player_level)
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_unlock_all_decorations() -> void:
+	for decor in decor_catalog.all_decorations():
+		data.unlocked_decorations[str(decor.decoration_id)] = true
+	save_now()
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_own_all_decorations() -> void:
+	debug_add_coins(50000)
+	for decor in decor_catalog.all_decorations():
+		data.owned_decorations[str(decor.decoration_id)] = true
+		data.unlocked_decorations[str(decor.decoration_id)] = true
+	save_now()
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_clear_decoration_placements() -> void:
+	data.placed_decorations.clear()
+	_sync_appeal(true)
+	save_now()
+	state_changed.emit()
+
+
+func debug_auto_place_highest_appeal() -> void:
+	DecorationManager.auto_place_highest_appeal(decor_catalog, data)
+	_sync_appeal(true)
+	save_now()
+	state_changed.emit()
+
+
+func debug_set_shop_level(level: int) -> void:
+	data.shop_level = clampi(level, 1, ShopLevelRules.MAX_SHOP_LEVEL)
+	DecorationManager.refresh_unlocks(decor_catalog, data)
+	var logs := DecorationManager.repair(decor_catalog, data)
+	if OS.is_debug_build():
+		for msg in logs:
+			print("debug_set_shop_level repair: ", msg)
+	save_now()
+	notifications_changed.emit()
+	state_changed.emit()
+
+
+func debug_print_decorations() -> void:
+	print(JSON.stringify({
+		"owned": data.owned_decorations,
+		"placed": data.placed_decorations,
+		"appeal": get_appeal_summary(),
+		"shop_level": data.shop_level,
+	}, "\t"))
+
+
+func debug_corrupt_decoration_save() -> void:
+	SaveManager.write_corrupted_decoration_data(data)
+	data = SaveManager.load_game()
+	_post_load_setup()
+	save_loaded.emit()
+	state_changed.emit()
+
+
+func debug_test_decoration_repair() -> void:
+	debug_corrupt_decoration_save()
+	var logs := DecorationManager.repair(decor_catalog, data)
+	print("decoration repair logs: ", logs)
+	save_now()
+	state_changed.emit()
+
+
+func debug_reset_decorations_only() -> void:
+	data.owned_decorations = {
+		"wooden_starter_sign": true,
+		"small_mint_plant": true,
+	}
+	data.unlocked_decorations = data.owned_decorations.duplicate(true)
+	data.placed_decorations = {
+		"front_sign": "wooden_starter_sign",
+		"plant_corner": "small_mint_plant",
+	}
+	data.shop_level = 1
+	_sync_appeal(true)
+	save_now()
+	notifications_changed.emit()
 	state_changed.emit()
 
 

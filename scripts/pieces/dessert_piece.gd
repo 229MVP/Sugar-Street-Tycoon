@@ -15,6 +15,7 @@ const ANIM_FALL := 0.18
 const ANIM_SPAWN := 0.22
 
 var piece_type: PieceType
+var special_kind: int = SpecialPieceKind.Kind.NONE
 var grid_pos: Vector2i = Vector2i.ZERO
 var cell_size: float = 64.0
 var input_enabled: bool = true
@@ -23,6 +24,10 @@ var _dragging: bool = false
 var _press_local: Vector2 = Vector2.ZERO
 var _base_scale: Vector2 = Vector2.ONE
 var _selected: bool = false
+## True between a real touch press and its release. Android also synthesizes
+## a mouse-button event for every touch; without this guard a single tap
+## would select/drag-release the piece twice (once per event type).
+var _touch_active: bool = false
 
 @onready var _sprite: TextureRect = $TextureRect
 @onready var _label: Label = $FallbackLabel
@@ -36,8 +41,9 @@ func _ready() -> void:
 	_apply_size()
 
 
-func setup(type: PieceType, pos: Vector2i, size: float) -> void:
+func setup(type: PieceType, pos: Vector2i, size: float, kind: int = SpecialPieceKind.Kind.NONE) -> void:
 	piece_type = type
+	special_kind = kind
 	grid_pos = pos
 	cell_size = size
 	if is_inside_tree():
@@ -49,6 +55,31 @@ func get_type_id() -> StringName:
 	if piece_type == null:
 		return &""
 	return piece_type.id
+
+
+func get_match_type_id() -> StringName:
+	## Color used for match detection. Rainbow specials do not color-match.
+	if special_kind == SpecialPieceKind.Kind.RAINBOW:
+		return &""
+	return get_type_id()
+
+
+func is_special() -> bool:
+	return SpecialPieceKind.is_special(special_kind)
+
+
+func set_special(kind: int, type: PieceType = null) -> void:
+	special_kind = kind
+	if type != null:
+		piece_type = type
+	if is_inside_tree():
+		_apply_visuals()
+
+
+func clear_special() -> void:
+	special_kind = SpecialPieceKind.Kind.NONE
+	if is_inside_tree():
+		_apply_visuals()
 
 
 func set_selected(is_selected: bool) -> void:
@@ -105,9 +136,12 @@ func _apply_visuals() -> void:
 		else:
 			_sprite.modulate = Color.WHITE
 	if _label:
-		_label.text = piece_type.fallback_label if piece_type.texture == null else ""
-		_label.visible = piece_type.texture == null
+		var base_text := piece_type.fallback_label if piece_type.texture == null else ""
+		var special_text := SpecialPieceKind.label(special_kind)
+		_label.text = ("%s%s" % [base_text, special_text]) if special_text != "" else base_text
+		_label.visible = piece_type.texture == null or special_kind != SpecialPieceKind.Kind.NONE
 		_label.modulate = piece_type.color
+	_apply_special_overlay()
 
 
 func _apply_size() -> void:
@@ -131,14 +165,44 @@ func refresh_layout() -> void:
 	_apply_size()
 
 
+func _apply_special_overlay() -> void:
+	if _sprite == null:
+		return
+	if special_kind == SpecialPieceKind.Kind.RAINBOW:
+		_sprite.modulate = Color(1.0, 0.92, 0.35, 1.0)
+	elif special_kind == SpecialPieceKind.Kind.BOMB:
+		_sprite.modulate = piece_type.color.lightened(0.15) if piece_type else Color.WHITE
+	elif special_kind == SpecialPieceKind.Kind.LINE_H or special_kind == SpecialPieceKind.Kind.LINE_V:
+		_sprite.modulate = piece_type.color.darkened(0.05) if piece_type else Color.WHITE
+	elif piece_type != null and piece_type.texture == null:
+		_sprite.modulate = piece_type.color
+	elif piece_type != null:
+		_sprite.modulate = Color.WHITE
+
+
 func _on_gui_input(event: InputEvent) -> void:
 	if not input_enabled:
 		return
-	if event is InputEventMouseButton:
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if st.pressed:
+			_touch_active = true
+			_dragging = true
+			_press_local = st.position
+			selected.emit(self)
+			accept_event()
+		elif _dragging:
+			_touch_active = false
+			_dragging = false
+			_emit_drag_if_needed(st.position)
+			accept_event()
+	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mb.pressed:
+			if _touch_active:
+				return
 			_dragging = true
 			_press_local = mb.position
 			selected.emit(self)
@@ -146,17 +210,6 @@ func _on_gui_input(event: InputEvent) -> void:
 		elif _dragging:
 			_dragging = false
 			_emit_drag_if_needed(mb.position)
-			accept_event()
-	elif event is InputEventScreenTouch:
-		var st := event as InputEventScreenTouch
-		if st.pressed:
-			_dragging = true
-			_press_local = st.position
-			selected.emit(self)
-			accept_event()
-		elif _dragging:
-			_dragging = false
-			_emit_drag_if_needed(st.position)
 			accept_event()
 	elif event is InputEventMouseMotion and _dragging:
 		accept_event()

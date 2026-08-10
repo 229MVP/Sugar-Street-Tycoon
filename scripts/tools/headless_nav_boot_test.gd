@@ -28,6 +28,7 @@ func _run() -> void:
 		"res://scenes/upgrades/upgrades_screen.tscn",
 		"res://scenes/recipes/recipe_book.tscn",
 		"res://scenes/inventory/inventory_screen.tscn",
+		"res://scenes/decor/decor_screen.tscn",
 	]:
 		if not ResourceLoader.exists(path):
 			push_error("missing %s" % path)

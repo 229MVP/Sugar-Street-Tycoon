@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8order_card01"]
+
+[ext_resource type="Script" path="res://scripts/orders/order_card.gd" id="1_card"]
+
+[node name="OrderCard" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 160)
+size_flags_horizontal = 3
+script = ExtResource("1_card")

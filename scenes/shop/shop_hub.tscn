@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://shop_hub_scene"]
+[gd_scene load_steps=3 format=3 uid="uid://c8shop_hub001"]
 
-[ext_resource type="Script" path="res://scripts/shop/shop_hub.gd" id="1_script"]
+[ext_resource type="Script" path="res://scripts/shop/shop_hub.gd" id="1_hub"]
+[ext_resource type="Theme" uid="uid://c8sugar_theme01" path="res://resources/themes/sugar_street_theme.tres" id="2_theme"]
 
 [node name="ShopHub" type="Control"]
 layout_mode = 3
@@ -9,4 +10,5 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_script")
+theme = ExtResource("2_theme")
+script = ExtResource("1_hub")

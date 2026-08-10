@@ -7,6 +7,10 @@ signal pieces_cleared(cleared_types: Dictionary, score_delta: int, cascade_index
 signal swap_resolved(was_valid: bool)
 signal input_lock_changed(locked: bool)
 signal reshuffled
+signal booster_mode_changed(active: bool)
+signal booster_action_finished(mode: int, success: bool)
+
+enum BoosterMode { NONE, HAMMER, SWAP }
 
 const MAX_GENERATION_ATTEMPTS := 80
 const MAX_RESHUFFLE_ATTEMPTS := 40
@@ -27,6 +31,9 @@ var _piece_types: Array[PieceType] = []
 var _rng := RandomNumberGenerator.new()
 var _board_origin: Vector2 = Vector2.ZERO
 var _resolving: bool = false
+var _last_swap_target: Vector2i = Vector2i(-1, -1)
+var _booster_mode: int = BoosterMode.NONE
+var _swap_booster_first: Vector2i = Vector2i(-1, -1)
 
 @onready var _pieces_root: Control = $PiecesRoot
 @onready var _board_background: Panel = $BoardBackground
@@ -49,12 +56,95 @@ func setup_from_config(config: LevelConfig) -> void:
 	columns = level_config.columns
 	rows = level_config.rows
 	_piece_types = level_config.piece_types.duplicate()
+	cancel_booster_mode()
 	_recalculate_layout()
 	await generate_board()
 
 
 func is_input_locked() -> bool:
 	return _input_locked
+
+
+func is_booster_mode_active() -> bool:
+	return _booster_mode != BoosterMode.NONE
+
+
+func get_booster_mode() -> int:
+	return _booster_mode
+
+
+func enter_booster_mode(mode: int) -> void:
+	_booster_mode = mode
+	_swap_booster_first = Vector2i(-1, -1)
+	_clear_selection()
+	set_input_locked(false)
+	booster_mode_changed.emit(true)
+
+
+func cancel_booster_mode() -> void:
+	if _booster_mode == BoosterMode.NONE:
+		return
+	_booster_mode = BoosterMode.NONE
+	_swap_booster_first = Vector2i(-1, -1)
+	_clear_selection()
+	booster_mode_changed.emit(false)
+
+
+func hammer_at(pos: Vector2i) -> bool:
+	if _input_locked or _resolving or _booster_mode != BoosterMode.NONE:
+		return false
+	if not _in_bounds(pos):
+		return false
+	var piece: DessertPiece = grid[pos.y][pos.x]
+	if piece == null:
+		return false
+	set_input_locked(true)
+	_clear_selection()
+	await _clear_cells({pos: true}, 0, true)
+	await _apply_gravity_and_refill()
+	await _resolve_cascades()
+	if not has_possible_moves():
+		await _reshuffle_board()
+	set_input_locked(false)
+	board_stable.emit()
+	return true
+
+
+func force_swap(a: Vector2i, b: Vector2i) -> bool:
+	if _input_locked or _resolving or _booster_mode != BoosterMode.NONE:
+		return false
+	if not _in_bounds(a) or not _in_bounds(b):
+		return false
+	if not SwapValidator.are_adjacent(a, b):
+		return false
+	var piece_a: DessertPiece = grid[a.y][a.x]
+	var piece_b: DessertPiece = grid[b.y][b.x]
+	if piece_a == null or piece_b == null:
+		return false
+	set_input_locked(true)
+	_clear_selection()
+	_last_swap_target = b
+	_swap_grid_cells(a, b)
+	await _animate_swap_parallel(piece_a, piece_b)
+	var special_swap := piece_a.is_special() or piece_b.is_special()
+	if special_swap:
+		await _activate_special_swap(a, b)
+	else:
+		var type_grid := get_type_grid()
+		if SwapValidator.has_any_match(type_grid):
+			await _resolve_cascades()
+	if not has_possible_moves():
+		await _reshuffle_board()
+	set_input_locked(false)
+	board_stable.emit()
+	return true
+
+
+func is_resolving() -> bool:
+	## True while a swap/cascade/reshuffle is actively animating. Used to block
+	## pausing mid-resolve, which would otherwise let `board_stable` fire while
+	## paused and silently skip the win/loss check (see GameController.pause_game).
+	return _resolving
 
 
 func set_input_locked(locked: bool) -> void:
@@ -127,8 +217,10 @@ func try_swap(a: Vector2i, b: Vector2i) -> bool:
 	set_input_locked(true)
 	_clear_selection()
 
+	_last_swap_target = b
 	var type_grid := get_type_grid()
-	var valid := SwapValidator.would_create_match(type_grid, a, b)
+	var special_swap := piece_a.is_special() or piece_b.is_special()
+	var valid := special_swap or SwapValidator.would_create_match(type_grid, a, b)
 
 	_swap_grid_cells(a, b)
 	await _animate_swap_parallel(piece_a, piece_b)
@@ -136,12 +228,16 @@ func try_swap(a: Vector2i, b: Vector2i) -> bool:
 	if not valid:
 		_swap_grid_cells(a, b) # restore logical grid
 		await _animate_invalid_return(piece_a, piece_b)
+		_last_swap_target = Vector2i(-1, -1)
 		set_input_locked(false)
 		swap_resolved.emit(false)
 		return false
 
 	swap_resolved.emit(true)
+	if special_swap:
+		await _activate_special_swap(a, b)
 	await _resolve_cascades()
+	_last_swap_target = Vector2i(-1, -1)
 	if not has_possible_moves():
 		await _reshuffle_board()
 	set_input_locked(false)
@@ -166,42 +262,99 @@ func _resolve_cascades() -> void:
 		if groups.is_empty():
 			break
 
+		var creation := SpecialPiecePlanner.plan_creation(groups, _last_swap_target)
 		var tiers := MatchDetector.cell_score_tiers(groups)
 		var matched_cells: Dictionary = {}
 		for cell in tiers.keys():
 			matched_cells[cell] = true
+		matched_cells = _expand_special_activations(matched_cells)
 
-		var cleared_types: Dictionary = {}
-		var score_delta := 0
-		var multiplier := cascade_index + 1
+		var spawn_pos := Vector2i(-1, -1)
+		var spawn_kind := SpecialPieceKind.Kind.NONE
+		var spawn_type: StringName = &""
+		if not creation.is_empty():
+			spawn_pos = creation["pos"]
+			spawn_kind = creation["kind"]
+			spawn_type = creation["type_id"]
+			matched_cells.erase(spawn_pos)
 
-		var pieces_to_clear: Array[DessertPiece] = []
-		for cell: Vector2i in matched_cells.keys():
-			var piece: DessertPiece = grid[cell.y][cell.x]
-			if piece == null:
-				continue
-			var type_id := piece.get_type_id()
-			cleared_types[type_id] = int(cleared_types.get(type_id, 0)) + 1
-			var run_size: int = tiers[cell]
-			score_delta += _points_for_run_size(run_size) * multiplier
-			pieces_to_clear.append(piece)
-			grid[cell.y][cell.x] = null
+		await _clear_cells(matched_cells, cascade_index, false, tiers)
 
-		pieces_cleared.emit(cleared_types, score_delta, cascade_index)
-
-		var clear_duration := 0.0
-		for piece in pieces_to_clear:
-			clear_duration = maxf(clear_duration, piece.play_clear())
-		if clear_duration > 0.0:
-			await get_tree().create_timer(clear_duration).timeout
-		for piece in pieces_to_clear:
-			if is_instance_valid(piece):
-				piece.queue_free()
+		if spawn_pos.x >= 0:
+			var spawn_piece: DessertPiece = grid[spawn_pos.y][spawn_pos.x]
+			if spawn_piece == null:
+				spawn_piece = _create_piece(_find_piece_type(spawn_type), spawn_pos)
+				grid[spawn_pos.y][spawn_pos.x] = spawn_piece
+			spawn_piece.set_special(spawn_kind, _find_piece_type(spawn_type))
 
 		await _apply_gravity_and_refill()
 		cascade_index += 1
 
 	_resolving = false
+
+
+func _activate_special_swap(a: Vector2i, b: Vector2i) -> void:
+	var matched := SpecialPieceResolver.swap_activation(grid, columns, rows, a, b)
+	if matched.is_empty():
+		return
+	await _clear_cells(matched, 0, true)
+	await _apply_gravity_and_refill()
+
+
+func _expand_special_activations(cells: Dictionary) -> Dictionary:
+	var expanded := cells.duplicate()
+	for cell: Vector2i in cells.keys():
+		var piece: DessertPiece = grid[cell.y][cell.x]
+		if piece == null or not piece.is_special():
+			continue
+		var extra := SpecialPieceResolver.activation_cells(
+			grid, columns, rows, cell, piece.special_kind
+		)
+		for extra_cell in extra.keys():
+			expanded[extra_cell] = true
+	return expanded
+
+
+func _clear_cells(
+	matched_cells: Dictionary,
+	cascade_index: int,
+	special_activation: bool,
+	tiers: Dictionary = {}
+) -> void:
+	if matched_cells.is_empty():
+		return
+	var cleared_types: Dictionary = {}
+	var score_delta := 0
+	var multiplier := cascade_index + 1
+	var pieces_to_clear: Array[DessertPiece] = []
+
+	for cell: Vector2i in matched_cells.keys():
+		var piece: DessertPiece = grid[cell.y][cell.x]
+		if piece == null:
+			continue
+		var type_id := piece.get_match_type_id()
+		if type_id == &"":
+			type_id = piece.get_type_id()
+		cleared_types[type_id] = int(cleared_types.get(type_id, 0)) + 1
+		if special_activation or piece.is_special():
+			score_delta += 250 * multiplier
+		elif tiers.has(cell):
+			score_delta += _points_for_run_size(int(tiers[cell])) * multiplier
+		else:
+			score_delta += 100 * multiplier
+		pieces_to_clear.append(piece)
+		grid[cell.y][cell.x] = null
+
+	pieces_cleared.emit(cleared_types, score_delta, cascade_index)
+
+	var clear_duration := 0.0
+	for piece in pieces_to_clear:
+		clear_duration = maxf(clear_duration, piece.play_clear())
+	if clear_duration > 0.0:
+		await get_tree().create_timer(clear_duration).timeout
+	for piece in pieces_to_clear:
+		if is_instance_valid(piece):
+			piece.queue_free()
 
 
 func _apply_gravity_and_refill() -> void:
@@ -378,6 +531,31 @@ func _make_runtime_piece() -> DessertPiece:
 func _on_piece_selected(piece: DessertPiece) -> void:
 	if _input_locked or _resolving:
 		return
+	if _booster_mode == BoosterMode.HAMMER:
+		var pos := piece.grid_pos
+		_clear_selection()
+		var mode := _booster_mode
+		cancel_booster_mode()
+		var ok: bool = await hammer_at(pos)
+		booster_action_finished.emit(mode, ok)
+		return
+	if _booster_mode == BoosterMode.SWAP:
+		if _swap_booster_first.x < 0:
+			_swap_booster_first = piece.grid_pos
+			piece.set_selected(true)
+			return
+		var first := _swap_booster_first
+		var second := piece.grid_pos
+		_clear_selection()
+		if not SwapValidator.are_adjacent(first, second):
+			_swap_booster_first = piece.grid_pos
+			piece.set_selected(true)
+			return
+		var mode := _booster_mode
+		cancel_booster_mode()
+		var ok: bool = await force_swap(first, second)
+		booster_action_finished.emit(mode, ok)
+		return
 	if _selected == null:
 		_selected = piece
 		piece.set_selected(true)
@@ -399,6 +577,8 @@ func _on_piece_selected(piece: DessertPiece) -> void:
 
 func _on_piece_drag_released(piece: DessertPiece, direction: Vector2i) -> void:
 	if _input_locked or _resolving:
+		return
+	if _booster_mode != BoosterMode.NONE:
 		return
 	var target := piece.grid_pos + direction
 	if not _in_bounds(target):
