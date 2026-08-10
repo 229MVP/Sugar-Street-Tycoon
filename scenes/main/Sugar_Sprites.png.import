@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dq0cxya8esnc"
-path="res://.godot/imported/candy.png-ed2f2f1ad8c7a14c25f834182228057a.ctex"
+uid="uid://co83xeandv73d"
+path="res://.godot/imported/Sugar_Sprites.png-8b7b2053ed2c0f72d6ab4134d48ae2c3.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/placeholders/candy.png"
-dest_files=["res://.godot/imported/candy.png-ed2f2f1ad8c7a14c25f834182228057a.ctex"]
+source_file="res://scenes/main/Sugar_Sprites.png"
+dest_files=["res://.godot/imported/Sugar_Sprites.png-8b7b2053ed2c0f72d6ab4134d48ae2c3.ctex"]
 
 [params]
 

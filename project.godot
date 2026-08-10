@@ -1,7 +1,16 @@
 ; Engine configuration file.
-; Sugar Street Tycoon: Match & Build — Match-3 Prototype
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
+
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
@@ -9,7 +18,7 @@ config/name="Sugar Street Tycoon: Match & Build"
 config/description="Match-3 and dessert shop management prototype."
 config/version="0.3.0"
 run/main_scene="res://scenes/main/title_screen.tscn"
-config/features=PackedStringArray("4.3", "Mobile")
+config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon/icon.png"
 
 [autoload]
@@ -66,11 +75,11 @@ debug_toggle_panel={
 ]
 }
 
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
 [rendering]
 
 renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
-
-[input_devices]
-
-pointing/emulate_touch_from_mouse=true
